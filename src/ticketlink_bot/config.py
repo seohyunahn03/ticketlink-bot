@@ -81,10 +81,20 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
         # 우선순위: CLI 지정 > XDG > 기본
         config_path = DEFAULT_CONFIG_PATH
         if not config_path.exists():
-            # 현재 디렉토리 config.yaml
+            # 현재 디렉토리 config.yaml (또는 실행파일 위치)
             local = Path("config.yaml")
+            exe_local = None
+            try:
+                # PyInstaller --onefile: EXE 위치 기준
+                import sys
+                exe_dir = Path(sys.executable).parent
+                exe_local = exe_dir / "config.yaml"
+            except Exception:
+                pass
             if local.exists():
                 config_path = local
+            elif exe_local and exe_local.exists():
+                config_path = exe_local
             else:
                 return cfg  # 기본값 사용
 
