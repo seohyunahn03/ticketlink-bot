@@ -534,20 +534,27 @@ def _print_menu(cfg: dict) -> None:
     """메뉴 화면 출력"""
     from . import __version__
     macro = cfg.get("macro", {})
-    has_zones = bool(macro.get("seat_zones", [])) or any(macro.get("seat_area", [0]*4))
+    zones = macro.get("seat_zones", [])
+    has_zones = bool(zones) or any(macro.get("seat_area", [0]*4))
     has_coords = any([macro.get(k, [0])[0] for k in ("click1","click2")])
     
-    print("""
+    # pre-compute values for f-string (avoid backslash issues)
+    z_str = f"✅ {len(zones)}개 구역" if zones else (f"✅ 1개 영역" if any(macro.get("seat_area",[0]*4)) else "❌ 미설정")
+    seat_str = macro.get("seat_color","C8C8C8")
+    tol_str = macro.get("color_tolerance",20)
+    con_str = f"{macro.get('consecutive_seats',2)}연석" if macro.get('consecutive_seats',2)>1 else f"{macro.get('consecutive_seats',2)}석"
+    
+    print(f"""
 ╔══════════════════════════════════════════════════════╗
 ║        🎫 티켓링크봇 - KBO 야구 예매 자동화          ║
-║                    v""" + __version__ + f"""                             ║
+║                    v{__version__}                               ║
 ╠══════════════════════════════════════════════════════╣
 ║                                                      ║
 ║  1️⃣  🎯 좌표 설정하기                               ║
 ║     (Chrome에서 직접 클릭해서 좌표+색상 저장)        ║
 ║                                                      ║
 ║  2️⃣  🔄 자동 예매 시작                              ║
-║     (F6 시작/중지 · ESC 종료 · Chrome 오버레이 표시)  ║
+║     (F6 시작/중지 · Chrome 오버레이 표시)            ║
 ║                                                      ║
 ║  3️⃣  ⚡ 한 번만 실행                                ║
 ║     (저장된 설정으로 1회 예매 시도)                  ║
@@ -559,9 +566,23 @@ def _print_menu(cfg: dict) -> None:
 ║     (저장된 좌표/색상/영역 확인)                     ║
 ║                                                      ║
 ╠══════════════════════════════════════════════════════╣
-║  준비: {"✅ 좌표설정완료" if has_coords else "❌ 좌표미설정"}  |  {"✅ 구역설정완료" if has_zones else "❌ 구역미설정"}  ║
+║  📌 예매 버튼: {_coord_status(macro, 'click1')} {"✅" if has_coords else "❌"}      ║
+║     예매하기({_coord_str(macro,'click1')}) · 확인({_coord_str(macro,'click2')})      ║
+║     선택완료({_coord_str(macro,'click3')}) · 결제({_coord_str(macro,'click4')})    ║
+║     날짜({_coord_str(macro,'date_click')}) · 회차({_coord_str(macro,'round_click')})   ║
+║  🏟️ 좌석영역: {z_str}     ║
+║  🎨 색상: #{seat_str}  오차:{tol_str}  {con_str}  ║
 ╚══════════════════════════════════════════════════════╝
 번호 입력 (1~5) 또는 q(종료) > """)
+
+
+def _coord_str(macro: dict, key: str) -> str:
+    v = macro.get(key, [0, 0])
+    return f"({v[0]},{v[1]})" if v[0] or v[1] else "___"
+
+def _coord_status(macro: dict, key: str) -> str:
+    v = macro.get(key, [0, 0])
+    return "✅" if v[0] or v[1] else "⭕"
 
 
 async def _interactive_menu() -> None:
