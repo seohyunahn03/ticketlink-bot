@@ -526,6 +526,199 @@ async def _watch_loop(bot, cfg):
     return 0
 
 
+# ================================================================
+# 🎯 대화형 메뉴
+# ================================================================
+
+def _print_menu(cfg: dict) -> None:
+    """메뉴 화면 출력"""
+    from . import __version__
+    macro = cfg.get("macro", {})
+    has_zones = bool(macro.get("seat_zones", [])) or any(macro.get("seat_area", [0]*4))
+    has_coords = any([macro.get(k, [0])[0] for k in ("click1","click2")])
+    
+    print("""
+╔══════════════════════════════════════════════════════╗
+║        🎫 티켓링크봇 - KBO 야구 예매 자동화          ║
+║                    v""" + __version__ + f"""                             ║
+╠══════════════════════════════════════════════════════╣
+║                                                      ║
+║  1️⃣  🎯 좌표 설정하기                               ║
+║     (Chrome에서 직접 클릭해서 좌표+색상 저장)        ║
+║                                                      ║
+║  2️⃣  🔄 자동 예매 시작                              ║
+║     (F6 시작/중지 · ESC 종료 · Chrome 오버레이 표시)  ║
+║                                                      ║
+║  3️⃣  ⚡ 한 번만 실행                                ║
+║     (저장된 설정으로 1회 예매 시도)                  ║
+║                                                      ║
+║  4️⃣  🔐 xAI OAuth 로그인                            ║
+║     (캡차 자동 인식용 - 폰 인증 가능)                ║
+║                                                      ║
+║  5️⃣  📋 설정 상태 보기                              ║
+║     (저장된 좌표/색상/영역 확인)                     ║
+║                                                      ║
+╠══════════════════════════════════════════════════════╣
+║  준비: {"✅ 좌표설정완료" if has_coords else "❌ 좌표미설정"}  |  {"✅ 구역설정완료" if has_zones else "❌ 구역미설정"}  ║
+╚══════════════════════════════════════════════════════╝
+번호 입력 (1~5) 또는 q(종료) > """)
+
+
+async def _interactive_menu() -> None:
+    """대화형 메뉴 — Chrome 연결 전에 표시"""
+    cfg = load_config()
+    _setup_logging()
+
+    while True:
+        _print_menu(cfg)
+        choice = input().strip()
+
+        if choice == "1":
+            # ── 좌표 설정 (--pick) ──
+            result = await _menu_connect_and_run(cfg, "pick")
+            if result == 0:
+                cfg = load_config()  # 설정 갱신
+                input("\n✅ 좌표 설정 완료! 엔터 → 메뉴로...")
+            else:
+                input("\n❌ Chrome 연결 실패! 엔터 → 메뉴로...")
+
+        elif choice == "2":
+            # ── 감시 모드 (--watch) ──
+            await _menu_connect_and_run(cfg, "watch")
+            input("\n감시 모드 종료. 엔터 → 메뉴로...")
+
+        elif choice == "3":
+            # ── 한 번 실행 (--full) ──
+            await _menu_connect_and_run(cfg, "full")
+            input("\n실행 완료. 엔터 → 메뉴로...")
+
+        elif choice == "4":
+            # ── xAI OAuth 로그인 (CDP 불필요) ──
+            try:
+                from .oauth import xai_oauth_login, get_xai_token
+                try:
+                    token = get_xai_token()
+                    if token:
+                        print("✅ 이미 로그인되어 있습니다.")
+                except Exception:
+                    print("\n1: 로컬 브라우저 로그인")
+                    print("2: 폰/원격 Device 인증")
+                    resp = input("선택 (1/2/Enter=취소): ").strip()
+                    if resp == "2":
+                        from .oauth import xai_device_login
+                        xai_device_login()
+                    elif resp == "1":
+                        xai_oauth_login()
+            except Exception as e:
+                print(f"❌ OAuth 로그인 실패: {e}")
+            input("\n엔터 → 메뉴로...")
+
+        elif choice == "5":
+            # ── 설정 상태 보기 ──
+            _show_config_status(cfg)
+            input("\n엔터 → 메뉴로...")
+
+        elif choice.lower() in ("q", "quit", "exit", "esc"):
+            print("👋 종료합니다.")
+            break
+
+        else:
+            print("⚠️ 1~5 또는 q를 입력하세요.")
+            _time.sleep(1)
+
+
+async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
+    """메뉴에서 Chrome CDP 연결 후 모드 실행"""
+    # Chrome CDP 연결
+    cdp_url = discover_cdp_url(cfg.get("chrome", {}).get("cdp_ports", [9222, 9223]))
+    if not cdp_url:
+        from .bot import _chrome_launch_help
+        print("\n❌ Chrome CDP 연결 실패")
+        print("Chrome을 --remote-debugging-port=9222 로 실행해주세요:")
+        print(_chrome_launch_help())
+        return 1
+
+    print(f"✅ Chrome CDP 연결")
+    bot = Bot()
+    await bot.connect(cdp_url)
+
+    # 티켓링크 탭 찾기
+    tab = await bot.find_tab("ticketlink")
+    if not tab:
+        tab = await bot.find_tab("야구")
+    if not tab:
+        print("❌ 티켓링크 탭 없음. Chrome에서 ticketlink.co.kr을 열어주세요!")
+        await bot.close()
+        return 1
+
+    print(f"✅ 탭: {tab.get('title', '?')[:50]}")
+    await bot.attach(tab["targetId"])
+
+    if mode == "pick":
+        # 좌표 설정은 _main()이 Chrome 연결도 직접 하므로, 재사용
+        import argparse
+        dummy_args = argparse.Namespace(pick=True, setup=False, url=None,
+            config=None, verbose=False, full=False, click=None, auto=False,
+            team="", no_captcha=False, version=False, watch=False)
+        await bot.close()
+        return await _main(dummy_args)
+    
+    elif mode == "watch":
+        return await _watch_loop(bot, cfg)
+
+    elif mode == "full":
+        from .booking import full_auto_book
+        result = await full_auto_book(bot, cfg)
+        if result.get("success"):
+            print(f"\n✅ {result['message']}")
+            print(f"📍 {result['url']}")
+        else:
+            print(f"\n⚠️ {result['message']}")
+        await bot.close()
+        return 0 if result.get("success") else 1
+
+    return 0
+
+
+def _show_config_status(cfg: dict) -> None:
+    """저장된 설정 상태 출력"""
+    macro = cfg.get("macro", {})
+    print(f"""
+╔══════════════════════════════════════════════════════╗
+║                 📋 설정 상태                          ║
+╠══════════════════════════════════════════════════════╣""")
+    
+    # 좌표 상태
+    coord_keys = [("click1", "예매하기"), ("click2", "확인"), 
+                  ("click3", "선택완료"), ("click4", "결제하기"),
+                  ("date_click", "날짜선택"), ("round_click", "회차선택"),
+                  ("section_click", "구역선택")]
+    
+    for key, label in coord_keys:
+        val = macro.get(key, [0, 0])
+        status = f"({val[0]}, {val[1]})" if val[0] != 0 or val[1] != 0 else "❌ 미설정"
+        print(f"║  {label}: {status}")
+
+    # 구역 상태
+    zones = macro.get("seat_zones", [])
+    if zones:
+        print(f"║")
+        for i, z in enumerate(zones):
+            area = z.get("area", [0]*4)
+            color = z.get("color", "?")
+            tol = z.get("tolerance", 20)
+            print(f"║  Zone {i+1}: 영역={area} 색상=#{color} 오차={tol}")
+    else:
+        area = macro.get("seat_area", [0]*4)
+        if any(area):
+            print(f"║  영역: {area} / 색상: #{macro.get('seat_color','?')} / 오차: {macro.get('color_tolerance',20)}")
+
+    print(f"""║
+║  연석: {macro.get('consecutive_seats', 2)}연석
+║  새로고침: {macro.get('delays', {}).get('refresh', 500)}ms
+╚══════════════════════════════════════════════════════╝""")
+
+
 async def _interactive_setup(bot: Bot, cfg: dict) -> int:
     """대화형 설정 마법사 — OAuth 로그인 + 좌표/색상 설정"""
     import json as _json
@@ -684,6 +877,12 @@ def main() -> None:
     if args.version:
         from . import __version__
         print(f"ticketlink-bot v{__version__}")
+        return
+
+    # 플래그가 하나도 없으면 → 대화형 메뉴 표시
+    has_action = any([args.auto, args.full, args.pick, args.setup, args.watch, args.click])
+    if not has_action:
+        asyncio.run(_interactive_menu())
         return
 
     exit_code = asyncio.run(_main(args))
