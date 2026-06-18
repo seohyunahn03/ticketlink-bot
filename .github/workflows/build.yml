@@ -1,0 +1,170 @@
+# 🎫 ticketlink-bot Build & Release CI
+# 
+# 빌드 트리거:
+# - main 브랜치 push → 모든 OS에서 빌드
+# - PR → 린트/테스트만
+# - 수동 실행 (workflow_dispatch) → 모든 OS + EXE 업로드
+# - 태그 (v*) → 모든 OS + GitHub Release 생성
+
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Check imports
+        run: |
+          cd src && python -c "
+          from ticketlink_bot.config import load_config
+          from ticketlink_bot.seats import find_seats_by_color, find_seats_in_zones
+          from ticketlink_bot.bot import Bot, discover_cdp_url, _chrome_launch_help
+          from ticketlink_bot.captcha import solve_captcha
+          from ticketlink_bot.booking import full_auto_book, pick_coordinates
+          from ticketlink_bot.__main__ import main
+          print('✅ All imports OK')
+          "
+      - name: Syntax check
+        run: python -m py_compile src/ticketlink_bot/*.py
+
+  build-windows:
+    name: Build Windows EXE
+    needs: lint
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build EXE with PyInstaller
+        run: python build/build_exe.py
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ticketlink-bot-windows
+          path: dist/ticketlink-bot.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS binary
+    needs: lint
+    if: github.event_name != 'pull_request'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build macOS binary
+        run: python build/build_exe.py
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ticketlink-bot-macos
+          path: dist/ticketlink-bot*
+          if-no-files-found: error
+
+  build-linux:
+    name: Build Linux binary
+    needs: lint
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Linux binary
+        run: python build/build_exe.py
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ticketlink-bot-linux
+          path: dist/ticketlink-bot*
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ticketlink-bot-*
+          merge-multiple: true
+          path: release-artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ticketlink-bot ${{ github.ref_name }}
+          body: |
+            🎫 ticketlink-bot ${{ github.ref_name }}
+            
+            ## 설치 방법
+            
+            ### Windows
+            1. `ticketlink-bot-windows.zip` 다운로드 → 압축 해제
+            2. `ticketlink-bot.exe` 실행
+            3. 또는 Inno Setup 설치기 사용
+            
+            ### macOS
+            1. `ticketlink-bot-macos.zip` 다운로드 → 압축 해제
+            2. 터미널에서 `./ticketlink-bot` 실행
+            
+            ### Linux
+            1. `ticketlink-bot-linux.zip` 다운로드 → 압축 해제
+            2. 터미널에서 `./ticketlink-bot` 실행
+            
+            ## 필수 설치
+            - Google Chrome (--remote-debugging-port=9222 모드)
+            - Tesseract OCR (선택, 캡차 해결용)
+          files: release-artifacts/*
+          draft: false
+          prerelease: false

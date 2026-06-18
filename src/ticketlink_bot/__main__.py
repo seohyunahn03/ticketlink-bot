@@ -1,0 +1,467 @@
+#!/usr/bin/env python3
+"""
+🎫 티켓링크봇 CLI — python -m ticketlink_bot
+
+사용법:
+  python -m ticketlink_bot                      # 현재 페이지 스캔
+  python -m ticketlink_bot --auto                # 자동 예매
+  python -m ticketlink_bot --auto --team "KIA"   # 특정 팀
+  python -m ticketlink_bot --config config.yaml  # 설정 파일
+"""
+import argparse
+import asyncio
+import logging
+import sys
+
+from .bot import Bot, discover_cdp_url
+from .booking import scan_and_book, click_and_book, pick_coordinates, full_auto_book
+from .config import load_config, save_config
+
+
+async def _draw_zone_rect(
+    bot: "Bot", x1: int, y1: int, x2: int, y2: int, zone_num: int = 1,
+) -> None:
+    """화면에 좌석 검색 영역 사각형 오버레이 표시 (통합매크로 스타일)"""
+    colors = ["#00ff88", "#ff8800", "#4488ff"]
+    color = colors[(zone_num - 1) % len(colors)]
+    await bot.js(f"""
+        (() => {{
+            const old = document.getElementById('_zone_rect_{zone_num}');
+            if (old) old.remove();
+
+            const rect = document.createElement('div');
+            rect.id = '_zone_rect_{zone_num}';
+            rect.style.cssText = `
+                position:fixed;
+                left:{min(x1,x2)}px; top:{min(y1,y2)}px;
+                width:{abs(x2-x1)}px; height:{abs(y2-y1)}px;
+                border:3px solid {color};
+                background:rgba({','.join(str(int(color[i:i+2],16)) for i in (1,3,5))},0.08);
+                z-index:999990;
+                pointer-events:none;
+                box-shadow: 0 0 8px {color}44;
+            `;
+            // 레이블
+            const label = document.createElement('div');
+            label.style.cssText = `
+                position:absolute; top:-28px; left:4px;
+                background:{color}; color:#000;
+                padding:2px 10px; border-radius:4px;
+                font:bold 14px sans-serif;
+            `;
+            label.textContent = 'Zone {zone_num}';
+            rect.appendChild(label);
+
+            // 구석 표시 (↖ ↙ ↗ ↘)
+            const corners = ['↖', '↗', '↙', '↘'];
+            const positions = [
+                {{left:'-4px', top:'-4px'}},
+                {{right:'-4px', top:'-4px'}},
+                {{left:'-4px', bottom:'-4px'}},
+                {{right:'-4px', bottom:'-4px'}},
+            ];
+            for (let i = 0; i < 4; i++) {{
+                const dot = document.createElement('div');
+                dot.textContent = corners[i];
+                dot.style.cssText = `
+                    position:absolute; font:bold 16px sans-serif;
+                    color:{color}; text-shadow: 0 0 4px #000;
+                    ${{Object.entries(positions[i]).map(([k,v]) => k+':'+v).join(';')}};
+                `;
+                rect.appendChild(dot);
+            }}
+
+            document.body.appendChild(rect);
+        }})()
+    """)
+
+
+def _coord_list_to_zones(macro: dict) -> list[dict]:
+    """하위호환: 기존 seat_area/seat_color를 zone으로 변환"""
+    zones = macro.get("seat_zones", [])
+    if not zones:
+        area = macro.get("seat_area", [0, 0, 0, 0])
+        color = macro.get("seat_color", "C8C8C8")
+        tol = macro.get("color_tolerance", 20)
+        if any(area):
+            zones = [{"area": area, "color": color, "tolerance": tol}]
+    return zones
+
+
+def _setup_logging(verbose: bool = False) -> None:
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        stream=sys.stdout,
+    )
+
+
+async def _main(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+
+    _setup_logging(args.verbose)
+
+    # CDP URL 확인
+    cdp_url = discover_cdp_url(cfg.get("chrome", {}).get("cdp_ports", [9222, 9223]))
+    if not cdp_url:
+        from .bot import _chrome_launch_help
+        print(
+            "❌ Chrome CDP 연결 실패\n"
+            "Chrome을 --remote-debugging-port=9222 로 실행해주세요:\n"
+            + _chrome_launch_help()
+        )
+        return 1
+
+    print(f"✅ Chrome CDP 연결")
+    print(f"   {cdp_url[:60]}...")
+
+    bot = Bot()
+    await bot.connect(cdp_url)
+
+    # 티켓링크 탭 찾기
+    tab = await bot.find_tab("ticketlink")
+    if not tab:
+        tab = await bot.find_tab("야구")
+    if not tab:
+        print("❌ 티켓링크 탭 없음. Chrome에서 ticketlink.co.kr을 열어주세요!")
+        await bot.close()
+        return 1
+
+    print(f"✅ 탭: {tab.get('title', '?')[:50]}")
+    await bot.attach(tab["targetId"])
+
+    if args.url:
+        await bot.navigate(args.url)
+        await asyncio.sleep(4)
+
+    if args.pick:
+        # ── 좌표 따기 모드 (통합매크로 방식, 다중 구역 지원) ──
+        print("""
+╔════════════════════════════════════════════════════════╗
+║   🎯 티켓링크봇 — 좌표 따기 모드                      ║
+║                                                        ║
+║   통합매크로 방식으로 Chrome에서 직접 클릭하며          ║
+║   좌표를 설정합니다.                                    ║
+║                                                        ║
+║   (각 단계: Chrome에서 해당 위치 클릭 → Enter)          ║
+║   (건너뛰려면 그냥 Enter)                               ║
+╚════════════════════════════════════════════════════════╝
+        """)
+        macro = cfg.setdefault("macro", {})
+
+        # 1. 예매/확인/선택완료/결제 좌표
+        steps = [
+            ("click1",      "1/6 📌 예매하기 버튼을 클릭하세요"),
+            ("click2",      "2/6 📌 확인 버튼 (예매안내 모달)"),
+            ("section_click", "3/6 📌 구역선택 (없으면 엔터)"),
+            ("click3",      "4/6 📌 선택완료 버튼"),
+            ("click4",      "5/6 📌 결제하기 버튼 (없으면 엔터)"),
+        ]
+        for key, prompt in steps:
+            print(f"\n{prompt}")
+            input("    클릭 후 Enter → ")
+            coord = await pick_coordinates(bot)
+            if coord:
+                macro[key] = [coord["x"], coord["y"]]
+                print(f"    ✅ {key}: ({coord['x']}, {coord['y']})")
+            else:
+                print(f"    ⏭️ {key} 건너뜀")
+
+        # 2. 날짜/회차 (선택)
+        for key, prompt in [
+            ("date_click", "6/6 📌 날짜 선택 (없으면 엔터)"),
+            ("round_click", "7/6 📌 회차 선택 (없으면 엔터)"),
+        ]:
+            print(f"\n{prompt}")
+            input("    클릭 후 Enter → ")
+            coord = await pick_coordinates(bot)
+            if coord:
+                macro[key] = [coord["x"], coord["y"]]
+                print(f"    ✅ {key}: ({coord['x']}, {coord['y']})")
+
+        # 3. 좌석 검색 영역 — 다중 구역(zone) 설정
+        print("""
+╔════════════════════════════════════════════════════════╗
+║   🏟️ 좌석 검색 영역 설정 (통합매크로 방식)             ║
+║                                                        ║
+║   여러 구역(zone)을 설정할 수 있습니다.                 ║
+║   각 구역마다 ↖좌상단, ↘우하단 클릭 + 색상 설정.       ║
+║   (예: 1루측, 3루측, 외야 등 구역별 색상이 다를 때)     ║
+╚════════════════════════════════════════════════════════╝
+        """)
+        zone_count_str = input("    구역(zone) 개수 (기본 1, 최대 3): ").strip()
+        try:
+            zone_count = max(1, min(3, int(zone_count_str)))
+        except ValueError:
+            zone_count = 1
+
+        seat_zones = []
+        for zi in range(zone_count):
+            print(f"\n─── Zone {zi + 1} ───")
+            input(f"    {zi+1}-① ↖좌상단 클릭 → Enter ")
+            p1 = await pick_coordinates(bot)
+            input(f"    {zi+1}-② ↘우하단 클릭 → Enter ")
+            p2 = await pick_coordinates(bot)
+
+            if p1 and p2:
+                # 사각형 오버레이 표시
+                await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
+
+                # 색상 설정
+                print(f"    {zi+1}-③ 빈 좌석(밝은색) 클릭 → Enter")
+                input("       ")
+                color_coord = await pick_coordinates(bot)
+                bgr = "C8C8C8"
+                if color_coord:
+                    from .seats import pick_color_at
+                    try:
+                        png = await bot.screenshot()
+                        bgr = pick_color_at(png, color_coord["x"], color_coord["y"])
+                        print(f"       ✅ 색상: #{bgr}")
+                    except Exception as e:
+                        print(f"       ⚠️ 색상 추출 실패: {e}")
+
+                zone = {
+                    "area": [p1["x"], p1["y"], p2["x"], p2["y"]],
+                    "color": bgr,
+                    "tolerance": macro.get("color_tolerance", 20),
+                }
+                seat_zones.append(zone)
+                print(f"    ✅ Zone {zi+1} 등록: 영역={zone['area']}, 색상=#{bgr}")
+
+        if seat_zones:
+            macro["seat_zones"] = seat_zones
+            # 하위호환: 첫 번째 zone의 값을 seat_area/seat_color에도 저장
+            first = seat_zones[0]
+            macro["seat_area"] = first["area"]
+            macro["seat_color"] = first["color"]
+
+        # 4. 연석 설정
+        print(f"\n\n💺 몇 연석? (기본: {macro.get('consecutive_seats', 2)})")
+        resp = input("    숫자 입력 (예: 2) → ").strip()
+        if resp.isdigit() and int(resp) >= 1:
+            macro["consecutive_seats"] = int(resp)
+            print(f"    ✅ {macro['consecutive_seats']}연석")
+
+        # 5. 오차범위
+        print(f"\n🎨 색상 오차범위 (현재: {macro.get('color_tolerance', 20)})")
+        print("    (통합매크로: 티켓링크 20~25, 인터파크 3)")
+        resp = input("    숫자 입력 → ").strip()
+        if resp.isdigit():
+            macro["color_tolerance"] = int(resp)
+            # 모든 zone에 오차범위 적용
+            for z in macro.get("seat_zones", []):
+                z["tolerance"] = int(resp)
+
+        # 저장
+        path = save_config(cfg)
+        print(f"\n✅ 설정 저장 완료: {path}")
+        print("\n🎯 이제 아래 명령어로 실행하세요:")
+        print("    python -m ticketlink_bot --full")
+        return 0
+
+    if args.setup:
+        # 대화형 설정 모드
+        return await _interactive_setup(bot, cfg)
+
+    if args.full:
+        # 전체 자동 예매 (설정 기반)
+        result = await full_auto_book(bot, cfg)
+    elif args.click:
+        # 좌표 클릭 모드
+        parts = args.click.replace(" ", "").split(",")
+        if len(parts) < 4:
+            print("❌ --click 형식: x1,y1,x2,y2 (예: 800,500,900,600)")
+            return 1
+        x1, y1, x2, y2 = map(int, parts[:4])
+        result = await click_and_book(
+            bot,
+            click1=(x1, y1),
+            click2=(x2, y2),
+            captcha_enabled=not args.no_captcha,
+        )
+    else:
+        # 기존 자동/스캔 모드
+        result = await scan_and_book(
+            bot,
+            auto=args.auto,
+            team_keyword=args.team or cfg.get("booking", {}).get("team", "LG"),
+            captcha_enabled=not args.no_captcha,
+        )
+
+    if result["success"]:
+        print(f"\n✅ {result['message']}")
+        print(f"📍 {result['url']}")
+    else:
+        print(f"\n⚠️ {result['message']}")
+
+    await bot.close()
+    return 0 if result["success"] else 1
+
+
+async def _interactive_setup(bot: Bot, cfg: dict) -> int:
+    """대화형 설정 마법사 — OAuth 로그인 + 좌표/색상 설정"""
+    import json as _json
+    from .seats import pick_color_at
+    from .oauth import xai_oauth_login, get_xai_token
+
+    print("""
+╔════════════════════════════════════════╗
+║   🎫 티켓링크봇 설정 마법사           ║
+║                                        ║
+║   단계별로 Chrome에서 클릭하여         ║
+║   좌표와 색상을 설정합니다.            ║
+╚════════════════════════════════════════╝
+    """)
+
+    # ===== 0. xAI OAuth 로그인 =====
+    try:
+        token = get_xai_token()
+        if token:
+            print("✅ xAI OAuth: 이미 로그인됨")
+    except Exception:
+        print("\n📌 xAI OAuth 로그인이 필요합니다.")
+        print("   1) 로컬 브라우저 로그인 (컴퓨터 앞에 있을 때)")
+        print("   2) Device 인증 (폰/태블릿으로도 가능!)")
+        print("   그냥 Enter → 건너뛰기")
+        resp = input("   선택 (1/2): ").strip()
+        try:
+            if resp == "2":
+                from .oauth import xai_device_login
+                xai_device_login()
+                print("✅ Device 인증 완료!")
+            elif resp != "":
+                from .oauth import xai_oauth_login
+                xai_oauth_login()
+        except Exception as e:
+            print(f"   ⚠️ OAuth 로그인 실패: {e}")
+            print("   건너뜁니다. --setup을 다시 실행하거나")
+            print('   환경변수 XAI_API_KEY를 설정하세요.')
+
+    macro = cfg.setdefault("macro", {})
+
+    steps = [
+        ("click1", "1/8 📌 예매하기 버튼을 클릭하세요"),
+        ("click2", "2/8 📌 확인 버튼을 클릭하세요 (예매안내 모달)"),
+        ("section_click", "3/8 📌 구역선택 버튼 (없으면 엔터)"),
+        ("click3", "4/8 📌 선택완료 버튼을 클릭하세요"),
+        ("click4", "5/8 📌 결제하기 버튼 (없으면 엔터)"),
+        ("date_click", "6/8 📌 날짜 선택 버튼을 클릭 (없으면 엔터)"),
+        ("round_click", "7/8 📌 회차 선택 버튼을 클릭 (없으면 엔터)"),
+    ]
+
+    for key, prompt in steps:
+        input(f"\n{prompt}\n    준비되면 Enter → ")
+        coord = await pick_coordinates(bot)
+        if coord:
+            macro[key] = [coord["x"], coord["y"]]
+            print(f"    ✅ {key} = ({coord['x']}, {coord['y']})")
+        else:
+            print("    ⏭️ 건너뜀")
+
+    # 좌석 범위 설정 — 다중 구역(zone) 지원
+    print("""
+╔════════════════════════════════════════════════════════╗
+║   🏟️ 좌석 검색 영역 설정                             ║
+║                                                        ║
+║   여러 구역(zone)을 설정할 수 있습니다.                ║
+║   zone 2+는 선택사항 (없으면 엔터로 건너뛰기).         ║
+╚════════════════════════════════════════════════════════╝
+    """)
+
+    zone_count_str = input("    구역(zone) 개수 (기본 1, 최대 3): ").strip()
+    try:
+        zone_count = max(1, min(3, int(zone_count_str)))
+    except ValueError:
+        zone_count = 1
+
+    seat_zones = []
+    for zi in range(zone_count):
+        print(f"\n─── Zone {zi + 1} ───")
+        input(f"    {zi+1}-① ↖좌상단 클릭 → Enter ")
+        p1 = await pick_coordinates(bot)
+        input(f"    {zi+1}-② ↘우하단 클릭 → Enter ")
+        p2 = await pick_coordinates(bot)
+
+        if p1 and p2:
+            await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
+
+            print(f"    {zi+1}-③ 빈 좌석(밝은색) 클릭 → Enter")
+            input("       ")
+            color_coord = await pick_coordinates(bot)
+            bgr = "C8C8C8"
+            if color_coord:
+                try:
+                    png = await bot.screenshot()
+                    bgr = pick_color_at(png, color_coord["x"], color_coord["y"])
+                    print(f"       ✅ 색상: #{bgr}")
+                except Exception as e:
+                    print(f"       ⚠️ 색상 추출 실패: {e}")
+
+            zone = {
+                "area": [p1["x"], p1["y"], p2["x"], p2["y"]],
+                "color": bgr,
+                "tolerance": macro.get("color_tolerance", 20),
+            }
+            seat_zones.append(zone)
+            print(f"    ✅ Zone {zi+1} 등록")
+
+    if seat_zones:
+        macro["seat_zones"] = seat_zones
+        first = seat_zones[0]
+        macro["seat_area"] = first["area"]
+        macro["seat_color"] = first["color"]
+
+    print(f"\n🎨 색상 오차범위 (현재: {macro.get('color_tolerance', 20)})")
+    print("   (통합매크로: 티켓링크 20~25, 인터파크 3)")
+    resp = input("   숫자 입력 → ").strip()
+    if resp.isdigit():
+        macro["color_tolerance"] = int(resp)
+        for z in macro.get("seat_zones", []):
+            z["tolerance"] = int(resp)
+
+    # 연석 설정
+    print(f"\n💺 몇 연석? (현재: {macro.get('consecutive_seats', 2)})")
+    resp = input("   숫자 입력 (예: 2) → ").strip()
+    if resp.isdigit() and int(resp) >= 1:
+        macro["consecutive_seats"] = int(resp)
+        print(f"   ✅ {macro['consecutive_seats']}연석")
+
+    # 저장
+    path = save_config(cfg)
+    print(f"\n✅ 설정 저장 완료: {path}")
+    print("\n🎯 이제 아래 명령어로 실행하세요:")
+    print("    python -m ticketlink_bot --full")
+    return 0
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(
+        description="🎫 티켓링크봇 — KBO 야구 예매 자동화"
+    )
+    p.add_argument("--auto", action="store_true", help="전체 자동 예매")
+    p.add_argument("--full", action="store_true", help="전체 자동 예매 (설정파일 기반 매크로)")
+    p.add_argument("--pick", action="store_true", help="좌표 따기 모드")
+    p.add_argument("--setup", action="store_true", help="대화형 설정 마법사")
+    p.add_argument("--click", help="좌표 클릭 모드: x1,y1,x2,y2 (예매하기, 확인)")
+    p.add_argument("--team", default="", help="응원 팀명 (예: LG, KIA, 두산)")
+    p.add_argument("--url", help="시작 페이지 URL")
+    p.add_argument("--config", help="설정 파일 경로")
+    p.add_argument("--no-captcha", action="store_true", help="캡차 자동 입력 비활성화")
+    p.add_argument("-v", "--verbose", action="store_true", help="상세 로그")
+    p.add_argument("--version", action="store_true", help="버전 정보")
+
+    args = p.parse_args()
+
+    if args.version:
+        from . import __version__
+        print(f"ticketlink-bot v{__version__}")
+        return
+
+    exit_code = asyncio.run(_main(args))
+    sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()

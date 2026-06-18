@@ -1,0 +1,309 @@
+[
+  {
+    "name": "ONLINE_CONTACT_SESSION",
+    "value": "DZEsCcQNEl9%2FnQL8fYDrCSlMY2ZdUL7I%2BT4A%2B%2FufGvPMB1xvf3sR%2B7BH69JX2a3AkljCvs7LGXa%2BHZcw1QKXqVEL6f8ahErcPEuCAMGLc%2FKwcn5p1LbiTeL4JwQOd2PLWOjSTTr1luP6ljz0Whbq0NtJgTEaWBaR6ELbywXfeo8%3D",
+    "domain": ".ticketlink.co.kr",
+    "path": "/cs",
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "BID",
+    "value": "W7YLZ5KLPFAGK7CAD9FWRBOWA",
+    "domain": ".nhnace.com",
+    "path": "/",
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None",
+    "expires": 1796801582.958766
+  },
+  {
+    "name": "SCOUTER",
+    "value": "z5moa5k6qmj6jr",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1815836365.730328
+  },
+  {
+    "name": "_fwb",
+    "value": "141w9nmhXWLP907Ch7LUUGt.1781276365956",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1815886637.50048
+  },
+  {
+    "name": "__Host-AceatTopics",
+    "value": "__Host-AceatTopics",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None",
+    "expires": 1781362766
+  },
+  {
+    "name": "_ga",
+    "value": "GA1.1.2090877643.1781276367",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1815836367.367384
+  },
+  {
+    "name": "_gcl_au",
+    "value": "1.1.1161676500.1781276367",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1789052367
+  },
+  {
+    "name": "ACEFCID",
+    "value": "UID-6A2C1EEF7E83F0D36D305DE6",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1812380399
+  },
+  {
+    "name": "mxuid",
+    "value": "8602cdc9-001f-4323-afbd-54b5fcbcf156",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1812812399
+  },
+  {
+    "name": "_fbp",
+    "value": "fb.2.1781276400023.451698218852304467",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1789102637
+  },
+  {
+    "name": "cro_uv_ymd",
+    "value": "20260613",
+    "domain": ".www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1781449200
+  },
+  {
+    "name": "__Host-BROWSER_ID",
+    "value": "4a233f4f98b64979a577eec6420feea0",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "userLocale",
+    "value": "ko_KR",
+    "domain": ".payco.com",
+    "path": "/",
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "NNB",
+    "value": "yQAAAZ68XWo_5",
+    "domain": ".id.payco.com",
+    "path": "/",
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None",
+    "expires": 1815836699.198983
+  },
+  {
+    "name": "PN3ST",
+    "value": "AAAAmD4xbzjQvPmLDXvM3T9dSSThSyMQIkI7-p2yZwCS6fimOdNGHuxoc8VSxdbMQZem3KTd_6w-Q0QFSHmk2XXqJEG90SD-7REpvA_uZTIvfeYPokk4mLjI4YfKHWSh8iZdsP4Vj4j1olxBcMkRvF4MB7ECLDetgDVgSq0ksIkOBU1iJN1uMVPGnz3blomkZxe6wuX0PJhqG_gj9YB5Uct-HIc.S",
+    "domain": ".payco.com",
+    "path": "/",
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "TKLINK_SES",
+    "value": "AAAAmIktgUFbVSDMKqibVcGc5GkRrMivWDYUAJ53NzCYDvgHqT5jeHfkbvIhuZWpm46AOqL6p6BUEzLcAODeM2DtboUG5ZH1mQsN1R3iXKjLTAuT1_5_OUEBks9JwBkmpz-8OsuZYYhEpzwuobfqXSs4_gCLHCa0wUX1DQUQckJ8YrdWIynQAuI2pKXsDyVuPASkW6S9s1clVJk2pXr1an_reu8.A",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "TKLINK",
+    "value": "vqwVWmPr3dXSG5WisOMPMarYYiBOoIOVa1MOxa3U1Pgy9lcW%2BhTqt0YZopKpDLlJdLAq3%2BHOqPycQCPSdl2i%2B23fyWuZTMzGcLkZou8ztwyrC7MSdBcRsP72pNZo9glbCSHVKPnCopXRwFdBOwhgabmqNbhcO9UueD%2BqWw%2BYUbZi8KdpfkUOUZVhXRWrVqjmQ7CIaN3h97%2B9CJDRBvZ2ci0kwlcJkfItLtlhFSLMsrKKVlks%2B75vLnzkuZMu%2FdVjIEHcKNvtfFKs7L5%2BIN4V9w5lkhe2ePBiCT29mhNVlRhp7FKpshFrqlu0PuoBTy3yas3Bf%2BSOFg0K1YZvwJI1WDh3Im34oJy3TUEQE%2B88aXAzH%2FNChWEQCyJKWz1jgJ%2BkzIdf0LM8uOG6Y0zN5h9M6du2%2BBYlJsIGrb2EwqdgBz0%3D",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "VIEW_TKLINK_ID",
+    "value": "\"tae*********@naver.com\"",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "TKLINK_PAYCO_VIP_FLAG",
+    "value": "false",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "TKLINK_MNO",
+    "value": "%2BvTmEs61OR5F2odkweSjUQ%3D%3D",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "JSESSIONID",
+    "value": "FE5CB28DA78C1805AAE4EA0E2E8C9AA8.WAS1",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": true,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "ALBS2A39876863068",
+    "value": "1781288692634790843",
+    "domain": ".www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1815848692.027086
+  },
+  {
+    "name": "_clck",
+    "value": "16vl2gj%5E2%5Eg6v%5E0%5E2354",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1812844800
+  },
+  {
+    "name": "_AceT",
+    "value": "fb.2.1781276400023.451698218852304467",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1781326639
+  },
+  {
+    "name": "AUBS2A39876863068",
+    "value": "1781326337692541072%7C3%7C1781276399913875596%7C1%7C17812763998551P2Q%7C1",
+    "domain": ".www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1815886637.544025
+  },
+  {
+    "name": "ACEUACS",
+    "value": "undefined",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1815886637.544049
+  },
+  {
+    "name": "ARBS2A39876863068",
+    "value": "httpswwwticketlinkcokrsearchkeywordLGED8AB8EC9C88EC8AA420EC95BCEAB5AChttpswwwticketlinkcokrsearchkeywordLGED8AB8EC9C88EC8AA420EC95BCEAB5AC",
+    "domain": ".www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "TKLINK_CHK",
+    "value": "AAAA3frexVCN2T9hIbRiBDlQpQqYv7hIcRka_VZHBSjvFkMQW8p6SGox_otMIk2kivwZ-EEycpKngu_rZ_SK7EKx3QmM6XVOjfd3dGp8bZBbfJQFd6wJklmGvC59wCBa6kl5bDxXfF4gUw_anUBGxqoCwbYrxUYCTHsDnOHpaYmYv9ukP1XQ6-31hpxbq6gfv8WYvuva047dtysmf8rEE9ksB-bp2mqAMU5qWa6Lp2o77A_gMgRM73x1eBSlC99ejTiuNV40plmhTNBqUb0EAI6gvKruJlNeCKkA0ZTrFwBNoimX.SiuvcXsHG13IM3yv0FSB1NprfD9sTVTGRNjrTJVmlM4mZ3C8YWNFoIeqVOZ2ZATNejz8hh6jpo8Ky2r5fXOQ9O8bZZmBCNDd575aH-6Ikrbrq8dRu_KA91N5tob2r6aEEgc7bZTKWwSu0etcmvWCzlFoiTeOkyOaQ18NoqSO39NO48Yz7dsMEDuGP8-EGndYyu1_cR5_8VE2_2BI2tZhpuKg8p6QoQT-gbuKnXku7iq9ucG1bFeF40X27yxqvNxV4vFmuEDRoweKz09hCu3EGDJ-svfr4iejhZdz6CGOETanaxLjxQ18Oav2meENmCgVvrflFfVFTSjL0fyd1rVbKA",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "wcs_bt",
+    "value": "s_765d50fa49a:1781326637",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1815886637.501581
+  },
+  {
+    "name": "_ga_PVZX56STJJ",
+    "value": "GS2.1.s1781276367$o1$g1$t1781326637$j26$l0$h0",
+    "domain": ".ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1815886637.538556
+  },
+  {
+    "name": "ASBS2A39876863068",
+    "value": "1781326337692541072%7C1781326637231969191%7C1781326337692541072%7C0%7Cbookmark",
+    "domain": ".www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "_clsk",
+    "value": "1b8c8tt%5E1781326637592%5E65660%5E0%5Ex.clarity.ms%2Fcollect",
+    "domain": "www.ticketlink.co.kr",
+    "path": "/",
+    "httpOnly": false,
+    "secure": false,
+    "sameSite": "Lax",
+    "expires": 1781413037
+  }
+]

@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/pyi-*/
+dist/*.app
+dist/ticketlink-bot-macos.zip
+dist/ticketlink-bot.command
+*.dmg
+.venv/
+venv/
