@@ -464,4 +464,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"\n❌ 치명적 오류: {e}")
+        print("\n⚠️  EXE가 시작하자마자 꺼지면: DLL 누락 또는 import 실패입니다.")
+        print("   위 traceback을 보고하거나, 관리자에게 문의하세요.")
+        print("\n   엔터를 누르면 종료합니다...")
+        input()
+        sys.exit(1)

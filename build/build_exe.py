@@ -54,6 +54,12 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         "--hidden-import=requests.utils",
         "--hidden-import=requests.packages.urllib3",
 
+        # Native DLL 강제 수집 (Windows 크래시 방지)
+        "--collect-all=numpy",
+        "--collect-all=PIL",
+        "--collect-all=pytesseract",
+        "--collect-all=yaml",
+
         # 런타임 훅 (Windows 콘솔 UTF-8)
         f"--runtime-hook={SPEC_DIR / 'rthooks' / 'win_unicode.py'}" if os.name == "nt" else "",
 
