@@ -676,13 +676,96 @@ async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
     await bot.attach(tab["targetId"])
 
     if mode == "pick":
-        # 좌표 설정은 _main()이 Chrome 연결도 직접 하므로, 재사용
-        import argparse
-        dummy_args = argparse.Namespace(pick=True, setup=False, url=None,
-            config=None, verbose=False, full=False, click=None, auto=False,
-            team="", no_captcha=False, version=False, watch=False)
+        # 직접 pick 로직 호출 (중복 연결 방지)
+        from .booking import pick_coordinates, full_auto_book
+        from .seats import pick_color_at
+        from .config import save_config
+
+        print(r"""
+╔════════════════════════════════════════════════════════╗
+║   🎯 티켓링크봇 — 좌표 따기 모드                      ║
+║                                                        ║
+║   통합매크로 방식으로 Chrome에서 직접 클릭하며          ║
+║   좌표를 설정합니다.                                    ║
+║                                                        ║
+║   (각 단계: Chrome에서 해당 위치 클릭 → Enter)          ║
+║   (건너뛰려면 그냥 Enter)                               ║
+╚════════════════════════════════════════════════════════╝""")
+        macro = cfg.setdefault("macro", {})
+
+        steps = [
+            ("click1",      "1/7 📌 예매하기 버튼을 클릭하세요"),
+            ("click2",      "2/7 📌 확인 버튼 (예매안내 모달)"),
+            ("section_click", "3/7 📌 구역선택 (없으면 엔터)"),
+            ("click3",      "4/7 📌 선택완료 버튼"),
+            ("click4",      "5/7 📌 결제하기 버튼 (없으면 엔터)"),
+            ("date_click",  "6/7 📌 날짜 선택 (없으면 엔터)"),
+            ("round_click", "7/7 📌 회차 선택 (없으면 엔터)"),
+        ]
+        for key, prompt in steps:
+            print(f"\n{prompt}")
+            input("    클릭 후 Enter → ")
+            coord = await pick_coordinates(bot)
+            if coord:
+                macro[key] = [coord["x"], coord["y"]]
+                print(f"    ✅ {key}: ({coord['x']}, {coord['y']})")
+            else:
+                print(f"    ⏭️ {key} 건너뜀")
+
+        # 좌석 영역 설정
+        print("\n" + "═" * 50)
+        print("  🏟️ 좌석 검색 영역 설정")
+        print("  (여러 구역 가능: 1루측, 3루측, 외야...)")
+        zone_count_str = input("    구역 개수 (1~3, 기본 1): ").strip()
+        try: zone_count = max(1, min(3, int(zone_count_str)))
+        except ValueError: zone_count = 1
+
+        seat_zones = []
+        for zi in range(zone_count):
+            print(f"\n─── Zone {zi + 1} ───")
+            input(f"    {zi+1}-① ↖좌상단 클릭 → Enter ")
+            p1 = await pick_coordinates(bot)
+            input(f"    {zi+1}-② ↘우하단 클릭 → Enter ")
+            p2 = await pick_coordinates(bot)
+            if p1 and p2:
+                await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
+                print(f"    {zi+1}-③ 빈 좌석(밝은색) 클릭 → Enter")
+                input("       ")
+                cc = await pick_coordinates(bot)
+                bgr = "C8C8C8"
+                if cc:
+                    try:
+                        png = await bot.screenshot()
+                        bgr = pick_color_at(png, cc["x"], cc["y"])
+                        print(f"       ✅ 색상: #{bgr}")
+                    except Exception as e:
+                        print(f"       ⚠️ 색상 추출 실패: {e}")
+                seat_zones.append({
+                    "area": [p1["x"], p1["y"], p2["x"], p2["y"]],
+                    "color": bgr,
+                    "tolerance": macro.get("color_tolerance", 20),
+                })
+                print(f"    ✅ Zone {zi+1} 등록")
+        if seat_zones:
+            macro["seat_zones"] = seat_zones
+            macro["seat_area"] = seat_zones[0]["area"]
+            macro["seat_color"] = seat_zones[0]["color"]
+
+        # 연석
+        print(f"\n💺 몇 연석? (현재: {macro.get('consecutive_seats', 2)})")
+        resp = input("    숫자 입력 (예: 2) → ").strip()
+        if resp.isdigit() and int(resp) >= 1:
+            macro["consecutive_seats"] = int(resp)
+        # 오차범위
+        print(f"\n🎨 색상 오차범위 (현재: {macro.get('color_tolerance', 20)})")
+        resp = input("    숫자 입력 → ").strip()
+        if resp.isdigit():
+            macro["color_tolerance"] = int(resp)
+
+        save_config(cfg)
+        print(f"\n✅ 좌표 설정 저장 완료!")
         await bot.close()
-        return await _main(dummy_args)
+        return 0
     
     elif mode == "watch":
         return await _watch_loop(bot, cfg)
