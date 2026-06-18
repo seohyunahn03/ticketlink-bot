@@ -36,8 +36,8 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         f"--workpath={SPEC_DIR / 'build'}",
         f"--specpath={SPEC_DIR}",
 
-        # 데이터 파일 포함
-        f"--add-data={SRC_DIR / 'ticketlink_bot'};ticketlink_bot",
+        # 데이터 파일 포함 (⚠️ OS별 separator: Windows=;, Linux/macOS=:)
+        f"--add-data={SRC_DIR / 'ticketlink_bot'}{os.pathsep}ticketlink_bot",
 
         # 숨겨진 임포트 (PyInstaller가 자동 탐지 못하는 경우)
         "--hidden-import=websockets",

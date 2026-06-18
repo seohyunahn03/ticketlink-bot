@@ -1,11 +1,4 @@
 # 🎫 ticketlink-bot Build & Release CI
-# 
-# 빌드 트리거:
-# - main 브랜치 push → 모든 OS에서 빌드
-# - PR → 린트/테스트만
-# - 수동 실행 (workflow_dispatch) → 모든 OS + EXE 업로드
-# - 태그 (v*) → 모든 OS + GitHub Release 생성
-
 name: Build & Release
 
 on:
@@ -64,7 +57,9 @@ jobs:
           pip install pyinstaller
 
       - name: Build EXE with PyInstaller
-        run: python build/build_exe.py
+        shell: pwsh
+        run: |
+          python build/build_exe.py
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
@@ -133,7 +128,6 @@ jobs:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: ticketlink-bot-*
@@ -150,21 +144,16 @@ jobs:
             ## 설치 방법
             
             ### Windows
-            1. `ticketlink-bot-windows.zip` 다운로드 → 압축 해제
-            2. `ticketlink-bot.exe` 실행
-            3. 또는 Inno Setup 설치기 사용
+            1. `ticketlink-bot.exe` 다운로드 → 실행
+            2. Chrome을 CDP 모드로 실행 필요
             
             ### macOS
-            1. `ticketlink-bot-macos.zip` 다운로드 → 압축 해제
-            2. 터미널에서 `./ticketlink-bot` 실행
+            1. `ticketlink-bot-macos` 다운로드 → 실행 권한 부여
+            2. `chmod +x ticketlink-bot && ./ticketlink-bot --pick`
             
             ### Linux
-            1. `ticketlink-bot-linux.zip` 다운로드 → 압축 해제
-            2. 터미널에서 `./ticketlink-bot` 실행
-            
-            ## 필수 설치
-            - Google Chrome (--remote-debugging-port=9222 모드)
-            - Tesseract OCR (선택, 캡차 해결용)
+            1. `ticketlink-bot-linux` 다운로드 → 실행 권한 부여
+            2. `chmod +x ./ticketlink-bot && ./ticketlink-bot --pick`
           files: release-artifacts/*
           draft: false
           prerelease: false
