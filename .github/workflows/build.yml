@@ -44,6 +44,8 @@ jobs:
     needs: lint
     if: github.event_name != 'pull_request'
     runs-on: windows-latest
+    env:
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
