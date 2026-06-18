@@ -99,13 +99,14 @@ def create_console_rthook() -> None:
     hook = rthook_dir / "win_unicode.py"
     if not hook.exists():
         hook.write_text(
-            "# Windows 콘솔 UTF-8 설정\n"
+            "# Windows console UTF-8 setup\n"
             "import sys\n"
             "if sys.platform == 'win32':\n"
             "    import io\n"
             "    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')\n"
             "    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')\n"
-            "    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')\n"
+            "    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')\n",
+            encoding="utf-8"
         )
 
 
