@@ -17,6 +17,10 @@ from .bot import Bot, discover_cdp_url
 from .booking import scan_and_book, click_and_book, pick_coordinates, full_auto_book
 from .config import load_config, save_config
 
+# ── F6 토글 감시 모드 ──
+import threading as _threading
+import time as _time
+
 
 async def _draw_zone_rect(
     bot: "Bot", x1: int, y1: int, x2: int, y2: int, zone_num: int = 1,
@@ -265,6 +269,9 @@ async def _main(args: argparse.Namespace) -> int:
         # 대화형 설정 모드
         return await _interactive_setup(bot, cfg)
 
+    if args.watch:
+        return await _watch_loop(bot, cfg)
+
     if args.full:
         # 전체 자동 예매 (설정 기반)
         result = await full_auto_book(bot, cfg)
@@ -298,6 +305,137 @@ async def _main(args: argparse.Namespace) -> int:
 
     await bot.close()
     return 0 if result["success"] else 1
+
+
+# ================================================================
+# 🔄 F6 토글 감시 모드 — 통합매크로 스타일
+# ================================================================
+
+class _ToggleController:
+    """F6=토글, ESC=종료 키 리스너 (백그라운드 스레드)"""
+
+    def __init__(self):
+        self.enabled = True           # 시작 상태 = ON
+        self.running = True           # 스레드 유지 플래그
+        self._thread = None
+        self._start_listener()
+
+    def _start_listener(self):
+        """OS별 키 리스너 시작"""
+        if sys.platform == "win32":
+            self._thread = _threading.Thread(target=self._win32_listen, daemon=True)
+        else:
+            self._thread = _threading.Thread(target=self._unix_listen, daemon=True)
+        self._thread.start()
+
+    def _win32_listen(self):
+        """Windows: msvcrt (내장) — F6/ESC 감지"""
+        import msvcrt
+        while self.running:
+            if msvcrt.kbhit():
+                ch = msvcrt.getch()
+                if ch == b'\x00':  # 특수키 (F1-F12 등)
+                    ch2 = msvcrt.getch()
+                    if ch2 == b'\x75':  # VK_F6 = 117 = 0x75
+                        self.enabled = not self.enabled
+                        status = "🟢 실행" if self.enabled else "🔴 중지"
+                        print(f"\n  [{status}] F6 토글")
+                elif ch == b'\x1b':  # ESC
+                    self.running = False
+                    self.enabled = False
+                    print("\n  ⏹️ ESC → 감시 종료")
+            _time.sleep(0.05)
+
+    def _unix_listen(self):
+        """macOS/Linux: stdin 폴링 (fallback)"""
+        import select
+        while self.running:
+            if select.select([sys.stdin], [], [], 0.05)[0]:
+                try:
+                    line = sys.stdin.readline().strip().lower()
+                except (ValueError, OSError):
+                    break
+                if line in ("f6", "toggle"):
+                    self.enabled = not self.enabled
+                    status = "🟢 실행" if self.enabled else "🔴 중지"
+                    print(f"\n  [{status}] 토글")
+                elif line in ("esc", "exit", "quit"):
+                    self.running = False
+                    self.enabled = False
+                    print("\n  ⏹️ 종료")
+
+    def stop(self):
+        self.running = False
+
+
+async def _watch_loop(bot, cfg):
+    """
+    🔄 F6 토글 감시 모드 — 설정한 좌표로 계속 예매 시도.
+
+    - F6: 시작/중지 토글
+    - ESC: 완전 종료
+    - 내부: full_auto_book()을 계속 반복
+    """
+    macro = cfg.get("macro", {})
+    delays = macro.get("delays", {})
+    refresh_delay = delays.get("refresh", 500) / 1000.0
+
+    print(r"""
+╔══════════════════════════════════════════════════════╗
+║   🔄 티켓링크봇 — 감시 모드                         ║
+║                                                      ║
+║   설정된 좌표로 계속 예매를 시도합니다.              ║
+║   빈 좌석이 생기면 자동으로 예매를 진행합니다.       ║
+║                                                      ║
+║   [F6]  실행/중지 토글                               ║
+║   [ESC] 프로그램 종료                                ║
+║                                                      ║
+║   상태: 🟢 실행중                                    ║
+╚══════════════════════════════════════════════════════╝""")
+
+    toggle = _ToggleController()
+    attempt = 0
+
+    try:
+        while toggle.running:
+            # ── 중지 상태면 대기 ──
+            if not toggle.enabled:
+                await asyncio.sleep(0.2)
+                continue
+
+            attempt += 1
+            status = "🟢 실행" if toggle.enabled else "🔴 중지"
+            print(f"\n{'='*50}")
+            print(f"  [{status}] #{attempt}번째 예매 시도...")
+            print(f"{'='*50}")
+
+            try:
+                result = await full_auto_book(bot, cfg)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(f"  ⚠️ 예외 발생: {e}")
+                print(f"  ↻ {refresh_delay}초 후 재시도 (F6로 중지 가능)")
+                await asyncio.sleep(refresh_delay)
+                continue
+
+            if result and result.get("success"):
+                print(f"\n{'='*50}")
+                print(f"  ✅ 예매 성공! 감시 모드 종료")
+                print(f"  📍 {result.get('url', '')}")
+                print(f"{'='*50}")
+                break
+
+            print(f"  ↻ 실패, {refresh_delay}초 후 재시도 (F6로 중지, ESC로 종료)")
+            await asyncio.sleep(refresh_delay)
+
+    except KeyboardInterrupt:
+        print("\n\n  ⏹️ Ctrl+C 감지 → 종료")
+    finally:
+        toggle.stop()
+
+    await bot.close()
+    return 0
 
 
 async def _interactive_setup(bot: Bot, cfg: dict) -> int:
@@ -444,6 +582,7 @@ def main() -> None:
     p.add_argument("--full", action="store_true", help="전체 자동 예매 (설정파일 기반 매크로)")
     p.add_argument("--pick", action="store_true", help="좌표 따기 모드")
     p.add_argument("--setup", action="store_true", help="대화형 설정 마법사")
+    p.add_argument("--watch", action="store_true", help="감시 모드 (F6 시작/중지, ESC 종료)")
     p.add_argument("--click", help="좌표 클릭 모드: x1,y1,x2,y2 (예매하기, 확인)")
     p.add_argument("--team", default="", help="응원 팀명 (예: LG, KIA, 두산)")
     p.add_argument("--url", help="시작 페이지 URL")
