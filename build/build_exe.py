@@ -55,7 +55,7 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         "--hidden-import=requests.packages.urllib3",
 
         # 런타임 훅 (Windows 콘솔 UTF-8)
-        "--runtime-hook=rthooks/win_unicode.py" if os.name == "nt" else "",
+        f"--runtime-hook={SPEC_DIR / 'rthooks' / 'win_unicode.py'}" if os.name == "nt" else "",
 
         # 진입점
         str(SRC_DIR / "ticketlink_bot" / "__main__.py"),
