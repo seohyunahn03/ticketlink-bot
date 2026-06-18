@@ -380,6 +380,84 @@ async def _watch_loop(bot, cfg):
     delays = macro.get("delays", {})
     refresh_delay = delays.get("refresh", 500) / 1000.0
 
+    # ── Chrome 페이지에 상태 오버레이 주입 ──
+    await bot.js(r"""
+        (() => {
+            if (document.getElementById('_macro_status')) return;
+            const el = document.createElement('div');
+            el.id = '_macro_status';
+            el.innerHTML = `
+                <div id="_ms_bg" style="
+                    position:fixed; top:80px; right:20px; z-index:999999;
+                    background:rgba(0,0,0,0.85); backdrop-filter:blur(8px);
+                    border-radius:12px; padding:16px 20px; min-width:200px;
+                    border:2px solid #00ff88; box-shadow:0 4px 20px rgba(0,255,136,0.3);
+                    font-family:'Segoe UI',system-ui,sans-serif;
+                    pointer-events:none; user-select:none;
+                ">
+                    <div style="font-size:13px; color:#888; margin-bottom:6px;">
+                        🎫 ticketlink-bot
+                    </div>
+                    <div id="_ms_status" style="
+                        font-size:18px; font-weight:bold; color:#00ff88;
+                    ">
+                        🟢 실행중
+                    </div>
+                    <div id="_ms_sub" style="
+                        font-size:12px; color:#aaa; margin-top:6px;
+                    ">
+                        #0 시도중 · F6:토글 · ESC:종료
+                    </div>
+                </div>
+            `;
+            // 드래그 가능하게 (마우스 다운 → 이동)
+            const bg = el.querySelector('#_ms_bg');
+            let isDragging = false, startX, startY, origX, origY;
+            bg.style.cursor = 'move';
+            bg.style.pointerEvents = 'auto';
+            bg.addEventListener('mousedown', e => {
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                origX = bg.offsetLeft || parseInt(bg.style.right || '20');
+                origY = bg.offsetTop || 80;
+                // right→left 변환
+                bg.style.right = 'auto';
+                bg.style.left = (window.innerWidth - bg.offsetWidth - 20) + 'px';
+                origX = parseInt(bg.style.left);
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+            function onMove(e) {
+                if (!isDragging) return;
+                bg.style.left = (origX + e.clientX - startX) + 'px';
+                bg.style.top = (origY + e.clientY - startY) + 'px';
+            }
+            function onUp() {
+                isDragging = false;
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            }
+            document.body.appendChild(el);
+        })();
+    """)
+
+    async def _update_overlay(status_text: str, color: str, sub_text: str):
+        """Chrome 오버레이 상태 업데이트"""
+        await bot.js(f"""
+            const s = document.getElementById('_ms_status');
+            if (s) {{
+                s.textContent = '{status_text}';
+                s.style.color = '{color}';
+            }}
+            const sub = document.getElementById('_ms_sub');
+            if (sub) sub.textContent = '{sub_text}';
+            const bg = document.getElementById('_ms_bg');
+            if (bg) bg.style.borderColor = '{color}';
+        """)
+
+    await _update_overlay("🟢 실행중", "#00ff88", "#0 준비중 · F6:토글 · ESC:종료")
+
     print(r"""
 ╔══════════════════════════════════════════════════════╗
 ║   🔄 티켓링크봇 — 감시 모드                         ║
@@ -400,11 +478,13 @@ async def _watch_loop(bot, cfg):
         while toggle.running:
             # ── 중지 상태면 대기 ──
             if not toggle.enabled:
+                await _update_overlay("🔴 일시정지", "#ff4444", f"#{attempt} · F6:재개 · ESC:종료")
                 await asyncio.sleep(0.2)
                 continue
 
             attempt += 1
             status = "🟢 실행" if toggle.enabled else "🔴 중지"
+            await _update_overlay("🟢 실행중", "#00ff88", f"#{attempt} 시도중 · F6:중지 · ESC:종료")
             print(f"\n{'='*50}")
             print(f"  [{status}] #{attempt}번째 예매 시도...")
             print(f"{'='*50}")
@@ -420,6 +500,7 @@ async def _watch_loop(bot, cfg):
                 continue
 
             if result and result.get("success"):
+                await _update_overlay("✅ 예매 성공!", "#ffd700", "📍 자동 종료됩니다")
                 print(f"\n{'='*50}")
                 print(f"  ✅ 예매 성공! 감시 모드 종료")
                 print(f"  📍 {result.get('url', '')}")
@@ -427,12 +508,19 @@ async def _watch_loop(bot, cfg):
                 break
 
             print(f"  ↻ 실패, {refresh_delay}초 후 재시도 (F6로 중지, ESC로 종료)")
+            await _update_overlay("🔄 재시도중", "#ffaa00", f"#{attempt} 실패 · {refresh_delay}초 후 재시도")
             await asyncio.sleep(refresh_delay)
 
     except KeyboardInterrupt:
+        await _update_overlay("⏹️ 사용자 종료", "#ff4444", "Ctrl+C 감지됨")
         print("\n\n  ⏹️ Ctrl+C 감지 → 종료")
     finally:
         toggle.stop()
+        # 오버레이 제거
+        try:
+            await bot.js("document.getElementById('_macro_status')?.remove()")
+        except Exception:
+            pass
 
     await bot.close()
     return 0
