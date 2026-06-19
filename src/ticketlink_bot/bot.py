@@ -370,12 +370,18 @@ Object.defineProperty(document, 'all', {
 
     async def js(self, code: str) -> str | None:
         """JavaScript 실행 (세션 만료 시 자동 재연결)"""
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
         try:
             result = await self.cmd("Runtime.evaluate", {
                 "expression": code,
                 "returnByValue": True,
                 "awaitPromise": True,
             })
+            # JS 실행 예외 로깅
+            exc = result.get("exceptionDetails")
+            if exc:
+                _log.warning("⚠️ JS 예외: %s (line %s)", exc.get("text", "?"), exc.get("lineNumber", "?"))
             return result.get("result", {}).get("value")
         except ConnectionError:
             await self._reattach()
@@ -384,6 +390,9 @@ Object.defineProperty(document, 'all', {
                 "returnByValue": True,
                 "awaitPromise": True,
             })
+            exc = result.get("exceptionDetails")
+            if exc:
+                _log.warning("⚠️ JS 예외 (재연결 후): %s (line %s)", exc.get("text", "?"), exc.get("lineNumber", "?"))
             return result.get("result", {}).get("value")
 
     async def _reattach(self) -> None:
