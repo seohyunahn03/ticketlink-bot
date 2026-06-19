@@ -587,13 +587,18 @@ Object.defineProperty(document, 'all', {
             await asyncio.sleep(0.5)
         return None
 
-    async def attach(self, target_id: str) -> None:
+    async def attach(self, target_id: str, apply_stealth: bool = True) -> None:
         """특정 탭에 연결"""
         result = await self.cmd(
             "Target.attachToTarget",
             {"targetId": target_id, "flatten": True},
         )
         self.sid = result["sessionId"]
+        # 새 탭이면 스텔스 재적용 (탭마다 별도 스코프)
+        if apply_stealth:
+            self._stealth_applied = False  # 새 탭에서 스텔스 재적용
+            await asyncio.sleep(1.5)  # 페이지 초기 로딩 대기
+            await self.apply_stealth()
 
     async def navigate(self, url: str) -> None:
         """페이지 이동"""
