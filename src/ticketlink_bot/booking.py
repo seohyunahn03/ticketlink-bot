@@ -350,6 +350,11 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
         `;
         document.body.appendChild(overlay);
 
+        // AbortController로 리스너 관리 (finally에서 일괄 제거)
+        const ac = new AbortController();
+        window._coord_ac = ac;
+        const opts = { signal: ac.signal, capture: true };
+
         // 실시간 마우스 좌표 표시
         document.addEventListener('mousemove', e => {
             const ch = document.getElementById('_coord_crosshair');
@@ -363,7 +368,7 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
                 d.innerHTML = '📍 (' + e.clientX + ', ' + e.clientY + ')';
                 d.style.borderColor = '#0f0';
             }
-        }, true);
+        }, opts);
 
         // 우클릭 좌표 저장 (컨텍스트 메뉴 차단)
         document.addEventListener('contextmenu', e => {
@@ -381,14 +386,14 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
             }
             if (!window._captured_coords) window._captured_coords = [];
             window._captured_coords.push({x, y, time: Date.now()});
-        }, true);
+        }, opts);
 
         // ESC 키 감지
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') {
                 window._coord_cancelled = true;
             }
-        }, true);
+        }, opts);
     """)
 
     logger.info("✅ 좌표 오버레이 주입 완료! 우클릭해보세요.")
@@ -415,13 +420,21 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
         logger.warning("⏱️ 좌표 캡처 타임아웃")
         return {}
     finally:
-        # 오버레이 제거 (프로그램 종료 후에도 Chrome에 남지 않도록)
-        await bot.js("""
-            const el = document.getElementById('_coord_picker_overlay');
-            if (el) el.remove();
-            delete window._captured_coords;
-            delete window._coord_cancelled;
-        """)
+        # 오버레이 + 리스너 + JS 변수 정리 (예외 마스킹 방지를 위해 try/except)
+        try:
+            await bot.js("""
+                // AbortController로 모든 리스너 제거
+                if (window._coord_ac) {
+                    window._coord_ac.abort();
+                    delete window._coord_ac;
+                }
+                const el = document.getElementById('_coord_picker_overlay');
+                if (el) el.remove();
+                delete window._captured_coords;
+                delete window._coord_cancelled;
+            """)
+        except Exception:
+            pass  # 연결이 이미 끊겼으면 무시
 
 
 def _get_zones(macro: dict) -> list[dict]:

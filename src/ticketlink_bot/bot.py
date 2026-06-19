@@ -667,6 +667,10 @@ cls: (el.className || '').substring(0, 60)
         # 좌표 따기 오버레이 제거
         try:
             await self.js("""
+                if (window._coord_ac) {
+                    window._coord_ac.abort();
+                    delete window._coord_ac;
+                }
                 const el = document.getElementById('_coord_picker_overlay');
                 if (el) el.remove();
                 delete window._captured_coords;
