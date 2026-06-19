@@ -393,26 +393,35 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
 
     logger.info("✅ 좌표 오버레이 주입 완료! 우클릭해보세요.")
 
-    # 클릭 대기 (최대 click_timeout 초, 0.5초 간격 폴링)
-    for _ in range(click_timeout * 2):
-        # ESC 취소 확인
-        cancelled = await bot.js("window._coord_cancelled === true")
-        if cancelled:
-            logger.info("  ⏹️ ESC 취소")
-            return {}
+    try:
+        # 클릭 대기 (최대 click_timeout 초, 0.5초 간격 폴링)
+        for _ in range(click_timeout * 2):
+            # ESC 취소 확인
+            cancelled = await bot.js("window._coord_cancelled === true")
+            if cancelled:
+                logger.info("  ⏹️ ESC 취소")
+                return {}
 
-        coords = await bot.js("JSON.stringify(window._captured_coords || [])")
-        if coords and coords != "[]":
-            items = _json.loads(coords)
-            for c in items:
-                logger.info("  📌 (%d, %d)", c["x"], c["y"])
-            last = items[-1]
-            logger.info("✅ 최종 좌표: (%d, %d)", last["x"], last["y"])
-            return {"x": last["x"], "y": last["y"]}
-        await asyncio.sleep(0.5)
+            coords = await bot.js("JSON.stringify(window._captured_coords || [])")
+            if coords and coords != "[]":
+                items = _json.loads(coords)
+                for c in items:
+                    logger.info("  📌 (%d, %d)", c["x"], c["y"])
+                last = items[-1]
+                logger.info("✅ 최종 좌표: (%d, %d)", last["x"], last["y"])
+                return {"x": last["x"], "y": last["y"]}
+            await asyncio.sleep(0.5)
 
-    logger.warning("⏱️ 좌표 캡처 타임아웃")
-    return {}
+        logger.warning("⏱️ 좌표 캡처 타임아웃")
+        return {}
+    finally:
+        # 오버레이 제거 (프로그램 종료 후에도 Chrome에 남지 않도록)
+        await bot.js("""
+            const el = document.getElementById('_coord_picker_overlay');
+            if (el) el.remove();
+            delete window._captured_coords;
+            delete window._coord_cancelled;
+        """)
 
 
 def _get_zones(macro: dict) -> list[dict]:

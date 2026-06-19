@@ -108,37 +108,37 @@ async def _main(args: argparse.Namespace) -> int:
 
     bot = Bot()
     try:
-        await bot.connect(auto_launch=True)
-    except ConnectionError:
-        print(
-            "❌ Chrome CDP 연결 실패\n"
-            "Chrome을 찾을 수 없거나 자동 실행에 실패했습니다.\n"
-            "직접 실행: Chrome → --remote-debugging-port=9222"
-        )
-        return 1
+        try:
+            await bot.connect(auto_launch=True)
+        except ConnectionError:
+            print(
+                "❌ Chrome CDP 연결 실패\n"
+                "Chrome을 찾을 수 없거나 자동 실행에 실패했습니다.\n"
+                "직접 실행: Chrome → --remote-debugging-port=9222"
+            )
+            return 1
 
-    print(f"✅ Chrome CDP 연결")
-    print(f"   {bot._cdp_url[:60]}...")
+        print(f"✅ Chrome CDP 연결")
+        print(f"   {bot._cdp_url[:60]}...")
 
-    # 티켓링크 탭 찾기
-    tab = await bot.find_tab("ticketlink")
-    if not tab:
-        tab = await bot.find_tab("야구")
-    if not tab:
-        print("❌ 티켓링크 탭 없음. Chrome에서 ticketlink.co.kr을 열어주세요!")
-        await bot.close()
-        return 1
+        # 티켓링크 탭 찾기
+        tab = await bot.find_tab("ticketlink")
+        if not tab:
+            tab = await bot.find_tab("야구")
+        if not tab:
+            print("❌ 티켓링크 탭 없음. Chrome에서 ticketlink.co.kr을 열어주세요!")
+            return 1
 
-    print(f"✅ 탭: {tab.get('title', '?')[:50]}")
-    await bot.attach(tab["targetId"])
+        print(f"✅ 탭: {tab.get('title', '?')[:50]}")
+        await bot.attach(tab["targetId"])
 
-    if args.url:
-        await bot.navigate(args.url)
-        await asyncio.sleep(4)
+        if args.url:
+            await bot.navigate(args.url)
+            await asyncio.sleep(4)
 
-    if args.pick:
-        # ── 좌표 따기 모드 (통합매크로 방식, 다중 구역 지원) ──
-        print("""
+        if args.pick:
+            # ── 좌표 따기 모드 (통합매크로 방식, 다중 구역 지원) ──
+            print("""
 ╔════════════════════════════════════════════════════════╗
 ║   🎯 티켓링크봇 — 좌표 따기 모드                      ║
 ║                                                        ║
@@ -148,41 +148,41 @@ async def _main(args: argparse.Namespace) -> int:
 ║   (각 단계: Chrome에서 해당 위치 우클릭 → Enter)        ║
 ║   (건너뛰려면 그냥 Enter)                               ║
 ╚════════════════════════════════════════════════════════╝
-        """)
-        macro = cfg.setdefault("macro", {})
+            """)
+            macro = cfg.setdefault("macro", {})
 
-        # 1. 예매/확인/선택완료/결제 좌표
-        steps = [
-            ("click1",      "1/6 📌 예매하기 버튼을 우클릭하세요"),
-            ("click2",      "2/6 📌 확인 버튼 (예매안내 모달)"),
-            ("section_click", "3/6 📌 구역선택 (없으면 엔터)"),
-            ("click3",      "4/6 📌 선택완료 버튼"),
-            ("click4",      "5/6 📌 결제하기 버튼 (없으면 엔터)"),
-        ]
-        for key, prompt in steps:
-            print(f"\n{prompt}")
-            input("    우클릭 후 Enter → ")
-            coord = await pick_coordinates(bot)
-            if coord:
-                macro[key] = [coord["x"], coord["y"]]
-                print(f"    ✅ {key}: ({coord['x']}, {coord['y']})")
-            else:
-                print(f"    ⏭️ {key} 건너뜀")
+            # 1. 예매/확인/선택완료/결제 좌표
+            steps = [
+                ("click1",      "1/6 📌 예매하기 버튼을 우클릭하세요"),
+                ("click2",      "2/6 📌 확인 버튼 (예매안내 모달)"),
+                ("section_click", "3/6 📌 구역선택 (없으면 엔터)"),
+                ("click3",      "4/6 📌 선택완료 버튼"),
+                ("click4",      "5/6 📌 결제하기 버튼 (없으면 엔터)"),
+            ]
+            for key, prompt in steps:
+                print(f"\n{prompt}")
+                input("    우클릭 후 Enter → ")
+                coord = await pick_coordinates(bot)
+                if coord:
+                    macro[key] = [coord["x"], coord["y"]]
+                    print(f"    ✅ {key}: ({coord['x']}, {coord['y']})")
+                else:
+                    print(f"    ⏭️ {key} 건너뜀")
 
-        # 2. 날짜/회차 (선택)
-        for key, prompt in [
-            ("date_click", "6/6 📌 날짜 선택 (없으면 엔터)"),
-            ("round_click", "7/6 📌 회차 선택 (없으면 엔터)"),
-        ]:
-            print(f"\n{prompt}")
-            input("    우클릭 후 Enter → ")
-            coord = await pick_coordinates(bot)
-            if coord:
-                macro[key] = [coord["x"], coord["y"]]
-                print(f"    ✅ {key}: ({coord['x']}, {coord['y']})")
+            # 2. 날짜/회차 (선택)
+            for key, prompt in [
+                ("date_click", "6/6 📌 날짜 선택 (없으면 엔터)"),
+                ("round_click", "7/6 📌 회차 선택 (없으면 엔터)"),
+            ]:
+                print(f"\n{prompt}")
+                input("    우클릭 후 Enter → ")
+                coord = await pick_coordinates(bot)
+                if coord:
+                    macro[key] = [coord["x"], coord["y"]]
+                    print(f"    ✅ {key}: ({coord['x']}, {coord['y']})")
 
-        # 3. 좌석 검색 영역 — 다중 구역(zone) 설정
-        print("""
+            # 3. 좌석 검색 영역 — 다중 구역(zone) 설정
+            print("""
 ╔════════════════════════════════════════════════════════╗
 ║   🏟️ 좌석 검색 영역 설정 (통합매크로 방식)             ║
 ║                                                        ║
@@ -190,119 +190,119 @@ async def _main(args: argparse.Namespace) -> int:
 ║   각 구역마다 ↖좌상단, ↘우하단 클릭 + 색상 설정.       ║
 ║   (예: 1루측, 3루측, 외야 등 구역별 색상이 다를 때)     ║
 ╚════════════════════════════════════════════════════════╝
-        """)
-        zone_count_str = input("    구역(zone) 개수 (기본 1, 최대 3): ").strip()
-        try:
-            zone_count = max(1, min(3, int(zone_count_str)))
-        except ValueError:
-            zone_count = 1
+            """)
+            zone_count_str = input("    구역(zone) 개수 (기본 1, 최대 3): ").strip()
+            try:
+                zone_count = max(1, min(3, int(zone_count_str)))
+            except ValueError:
+                zone_count = 1
 
-        seat_zones = []
-        for zi in range(zone_count):
-            print(f"\n─── Zone {zi + 1} ───")
-            input(f"    {zi+1}-① ↖좌상단 우클릭 → Enter ")
-            p1 = await pick_coordinates(bot)
-            input(f"    {zi+1}-② ↘우하단 우클릭 → Enter ")
-            p2 = await pick_coordinates(bot)
+            seat_zones = []
+            for zi in range(zone_count):
+                print(f"\n─── Zone {zi + 1} ───")
+                input(f"    {zi+1}-① ↖좌상단 우클릭 → Enter ")
+                p1 = await pick_coordinates(bot)
+                input(f"    {zi+1}-② ↘우하단 우클릭 → Enter ")
+                p2 = await pick_coordinates(bot)
 
-            if p1 and p2:
-                # 사각형 오버레이 표시
-                await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
+                if p1 and p2:
+                    # 사각형 오버레이 표시
+                    await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
 
-                # 색상 설정
-                print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → Enter")
-                input("       ")
-                color_coord = await pick_coordinates(bot)
-                bgr = "C8C8C8"
-                if color_coord:
-                    from .seats import pick_color_at
-                    try:
-                        png = await bot.screenshot()
-                        bgr = pick_color_at(png, color_coord["x"], color_coord["y"])
-                        print(f"       ✅ 색상: #{bgr}")
-                    except Exception as e:
-                        print(f"       ⚠️ 색상 추출 실패: {e}")
+                    # 색상 설정
+                    print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → Enter")
+                    input("       ")
+                    color_coord = await pick_coordinates(bot)
+                    bgr = "C8C8C8"
+                    if color_coord:
+                        from .seats import pick_color_at
+                        try:
+                            png = await bot.screenshot()
+                            bgr = pick_color_at(png, color_coord["x"], color_coord["y"])
+                            print(f"       ✅ 색상: #{bgr}")
+                        except Exception as e:
+                            print(f"       ⚠️ 색상 추출 실패: {e}")
 
-                zone = {
-                    "area": [p1["x"], p1["y"], p2["x"], p2["y"]],
-                    "color": bgr,
-                    "tolerance": macro.get("color_tolerance", 20),
-                }
-                seat_zones.append(zone)
-                print(f"    ✅ Zone {zi+1} 등록: 영역={zone['area']}, 색상=#{bgr}")
+                    zone = {
+                        "area": [p1["x"], p1["y"], p2["x"], p2["y"]],
+                        "color": bgr,
+                        "tolerance": macro.get("color_tolerance", 20),
+                    }
+                    seat_zones.append(zone)
+                    print(f"    ✅ Zone {zi+1} 등록: 영역={zone['area']}, 색상=#{bgr}")
 
-        if seat_zones:
-            macro["seat_zones"] = seat_zones
-            # 하위호환: 첫 번째 zone의 값을 seat_area/seat_color에도 저장
-            first = seat_zones[0]
-            macro["seat_area"] = first["area"]
-            macro["seat_color"] = first["color"]
+            if seat_zones:
+                macro["seat_zones"] = seat_zones
+                # 하위호환: 첫 번째 zone의 값을 seat_area/seat_color에도 저장
+                first = seat_zones[0]
+                macro["seat_area"] = first["area"]
+                macro["seat_color"] = first["color"]
 
-        # 4. 연석 설정
-        print(f"\n\n💺 몇 연석? (기본: {macro.get('consecutive_seats', 2)})")
-        resp = input("    숫자 입력 (예: 2) → ").strip()
-        if resp.isdigit() and int(resp) >= 1:
-            macro["consecutive_seats"] = int(resp)
-            print(f"    ✅ {macro['consecutive_seats']}연석")
+            # 4. 연석 설정
+            print(f"\n\n💺 몇 연석? (기본: {macro.get('consecutive_seats', 2)})")
+            resp = input("    숫자 입력 (예: 2) → ").strip()
+            if resp.isdigit() and int(resp) >= 1:
+                macro["consecutive_seats"] = int(resp)
+                print(f"    ✅ {macro['consecutive_seats']}연석")
 
-        # 5. 오차범위
-        print(f"\n🎨 색상 오차범위 (현재: {macro.get('color_tolerance', 20)})")
-        print("    (통합매크로: 티켓링크 20~25, 인터파크 3)")
-        resp = input("    숫자 입력 → ").strip()
-        if resp.isdigit():
-            macro["color_tolerance"] = int(resp)
-            # 모든 zone에 오차범위 적용
-            for z in macro.get("seat_zones", []):
-                z["tolerance"] = int(resp)
+            # 5. 오차범위
+            print(f"\n🎨 색상 오차범위 (현재: {macro.get('color_tolerance', 20)})")
+            print("    (통합매크로: 티켓링크 20~25, 인터파크 3)")
+            resp = input("    숫자 입력 → ").strip()
+            if resp.isdigit():
+                macro["color_tolerance"] = int(resp)
+                # 모든 zone에 오차범위 적용
+                for z in macro.get("seat_zones", []):
+                    z["tolerance"] = int(resp)
 
-        # 저장
-        path = save_config(cfg)
-        print(f"\n✅ 설정 저장 완료: {path}")
-        print("\n🎯 이제 아래 명령어로 실행하세요:")
-        print("    python -m ticketlink_bot --full")
-        return 0
+            # 저장
+            path = save_config(cfg)
+            print(f"\n✅ 설정 저장 완료: {path}")
+            print("\n🎯 이제 아래 명령어로 실행하세요:")
+            print("    python -m ticketlink_bot --full")
+            return 0
 
-    if args.setup:
-        # 대화형 설정 모드
-        return await _interactive_setup(bot, cfg)
+        if args.setup:
+            # 대화형 설정 모드
+            return await _interactive_setup(bot, cfg)
 
-    if args.watch:
-        return await _watch_loop(bot, cfg)
+        if args.watch:
+            return await _watch_loop(bot, cfg)
 
-    if args.full:
-        # 전체 자동 예매 (설정 기반)
-        result = await full_auto_book(bot, cfg)
-    elif args.click:
-        # 좌표 클릭 모드
-        parts = args.click.replace(" ", "").split(",")
-        if len(parts) < 4:
-            print("❌ --click 형식: x1,y1,x2,y2 (예: 800,500,900,600)")
-            return 1
-        x1, y1, x2, y2 = map(int, parts[:4])
-        result = await click_and_book(
-            bot,
-            click1=(x1, y1),
-            click2=(x2, y2),
-            captcha_enabled=not args.no_captcha,
-        )
-    else:
-        # 기존 자동/스캔 모드
-        result = await scan_and_book(
-            bot,
-            auto=args.auto,
-            team_keyword=args.team or cfg.get("booking", {}).get("team", "LG"),
-            captcha_enabled=not args.no_captcha,
-        )
+        if args.full:
+            # 전체 자동 예매 (설정 기반)
+            result = await full_auto_book(bot, cfg)
+        elif args.click:
+            # 좌표 클릭 모드
+            parts = args.click.replace(" ", "").split(",")
+            if len(parts) < 4:
+                print("❌ --click 형식: x1,y1,x2,y2 (예: 800,500,900,600)")
+                return 1
+            x1, y1, x2, y2 = map(int, parts[:4])
+            result = await click_and_book(
+                bot,
+                click1=(x1, y1),
+                click2=(x2, y2),
+                captcha_enabled=not args.no_captcha,
+            )
+        else:
+            # 기존 자동/스캔 모드
+            result = await scan_and_book(
+                bot,
+                auto=args.auto,
+                team_keyword=args.team or cfg.get("booking", {}).get("team", "LG"),
+                captcha_enabled=not args.no_captcha,
+            )
 
-    if result["success"]:
-        print(f"\n✅ {result['message']}")
-        print(f"📍 {result['url']}")
-    else:
-        print(f"\n⚠️ {result['message']}")
+        if result["success"]:
+            print(f"\n✅ {result['message']}")
+            print(f"📍 {result['url']}")
+        else:
+            print(f"\n⚠️ {result['message']}")
 
-    await bot.close()
-    return 0 if result["success"] else 1
-
+        return 0 if result["success"] else 1
+    finally:
+        await bot.close()
 
 # ================================================================
 # 🔄 F6 토글 감시 모드 — 통합매크로 스타일

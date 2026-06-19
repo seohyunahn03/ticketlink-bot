@@ -663,6 +663,16 @@ cls: (el.className || '').substring(0, 60)
         return True
 
     async def close(self) -> None:
-        """연결 종료"""
+        """연결 종료 + 페이지에 남은 오버레이 정리"""
+        # 좌표 따기 오버레이 제거
+        try:
+            await self.js("""
+                const el = document.getElementById('_coord_picker_overlay');
+                if (el) el.remove();
+                delete window._captured_coords;
+                delete window._coord_cancelled;
+            """)
+        except Exception:
+            pass  # 연결이 이미 끊겨있으면 무시
         if self.ws:
             await self.ws.close()
