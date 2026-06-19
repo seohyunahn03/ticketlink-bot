@@ -161,7 +161,7 @@ async def _main(args: argparse.Namespace) -> int:
             ]
             for key, prompt in steps:
                 print(f"\n{prompt}")
-                input("    우클릭 후 Enter → ")
+                print("    (Chrome에서 우클릭 → 좌표 저장 | ESC 또는 timeout → 건너뛰기)")
                 coord = await pick_coordinates(bot)
                 if coord:
                     macro[key] = [coord["x"], coord["y"]]
@@ -175,7 +175,7 @@ async def _main(args: argparse.Namespace) -> int:
                 ("round_click", "7/6 📌 회차 선택 (없으면 엔터)"),
             ]:
                 print(f"\n{prompt}")
-                input("    우클릭 후 Enter → ")
+                print("    (Chrome에서 우클릭 → 좌표 저장 | ESC → 건너뛰기)")
                 coord = await pick_coordinates(bot)
                 if coord:
                     macro[key] = [coord["x"], coord["y"]]
@@ -187,7 +187,7 @@ async def _main(args: argparse.Namespace) -> int:
 ║   🏟️ 좌석 검색 영역 설정 (통합매크로 방식)             ║
 ║                                                        ║
 ║   여러 구역(zone)을 설정할 수 있습니다.                 ║
-║   각 구역마다 ↖좌상단, ↘우하단 클릭 + 색상 설정.       ║
+║   각 구역마다 ↖좌상단, ↘우하단 우클릭 + 색상 설정.       ║
 ║   (예: 1루측, 3루측, 외야 등 구역별 색상이 다를 때)     ║
 ╚════════════════════════════════════════════════════════╝
             """)
@@ -200,9 +200,9 @@ async def _main(args: argparse.Namespace) -> int:
             seat_zones = []
             for zi in range(zone_count):
                 print(f"\n─── Zone {zi + 1} ───")
-                input(f"    {zi+1}-① ↖좌상단 우클릭 → Enter ")
+                print(f"    {zi+1}-① ↖좌상단 우클릭 → 좌표 저장")
                 p1 = await pick_coordinates(bot)
-                input(f"    {zi+1}-② ↘우하단 우클릭 → Enter ")
+                print(f"    {zi+1}-② ↘우하단 우클릭 → 좌표 저장")
                 p2 = await pick_coordinates(bot)
 
                 if p1 and p2:
@@ -210,8 +210,7 @@ async def _main(args: argparse.Namespace) -> int:
                     await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
 
                     # 색상 설정
-                    print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → Enter")
-                    input("       ")
+                    print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → 좌표 저장")
                     color_coord = await pick_coordinates(bot)
                     bgr = "C8C8C8"
                     if color_coord:
@@ -700,7 +699,7 @@ async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
         ]
         for key, prompt in steps:
             print(f"\n{prompt}")
-            input("    우클릭 후 Enter → ")
+            print("    (Chrome에서 우클릭 → 좌표 저장 | ESC → 건너뛰기)")
             coord = await pick_coordinates(bot)
             if coord:
                 macro[key] = [coord["x"], coord["y"]]
@@ -719,14 +718,13 @@ async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
         seat_zones = []
         for zi in range(zone_count):
             print(f"\n─── Zone {zi + 1} ───")
-            input(f"    {zi+1}-① ↖좌상단 우클릭 → Enter ")
+            print(f"    {zi+1}-① ↖좌상단 우클릭 → 좌표 저장")
             p1 = await pick_coordinates(bot)
-            input(f"    {zi+1}-② ↘우하단 우클릭 → Enter ")
+            print(f"    {zi+1}-② ↘우하단 우클릭 → 좌표 저장")
             p2 = await pick_coordinates(bot)
             if p1 and p2:
                 await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
-                print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → Enter")
-                input("       ")
+                print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → 좌표 저장")
                 cc = await pick_coordinates(bot)
                 bgr = "C8C8C8"
                 if cc:
