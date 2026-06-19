@@ -64,7 +64,7 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         f"--runtime-hook={SPEC_DIR / 'rthooks' / 'win_unicode.py'}" if os.name == "nt" else "",
 
         # 진입점
-        str(SRC_DIR / "ticketlink_bot" / "__main__.py"),
+        str(PROJECT_ROOT / "entry_point.py"),
     ]
 
     # extra args
