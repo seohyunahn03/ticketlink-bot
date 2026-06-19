@@ -304,7 +304,8 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
     logger.info("   (우클릭해도 컨텍스트 메뉴 안 뜹니다)")
 
     # 오버레이 스크립트 주입 (통합매크로 스타일)
-    await bot.js("""
+    # ⚠️ IIFE 필수: CDP Runtime.evaluate는 전역 스코프에서 const/let이 누적됨
+    await bot.js("""(() => {
         const old = document.getElementById('_coord_picker_overlay');
         if (old) old.remove();
 
@@ -414,7 +415,7 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
                 window._coord_cancelled = true;
             }
         }, opts);
-    """)
+    })();""")
 
     logger.info("✅ 좌표 오버레이 주입 완료! 우클릭해보세요.")
 
@@ -448,7 +449,7 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
                     window._coord_ac.abort();
                     delete window._coord_ac;
                 }
-                const el = document.getElementById('_coord_picker_overlay');
+                var el = document.getElementById('_coord_picker_overlay');
                 if (el) el.remove();
                 delete window._captured_coords;
                 delete window._coord_cancelled;
