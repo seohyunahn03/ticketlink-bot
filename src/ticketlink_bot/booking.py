@@ -449,8 +449,7 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
                     window._coord_ac.abort();
                     delete window._coord_ac;
                 }
-                var el = document.getElementById('_coord_picker_overlay');
-                if (el) el.remove();
+                document.getElementById('_coord_picker_overlay')?.remove();
                 delete window._captured_coords;
                 delete window._coord_cancelled;
             """)

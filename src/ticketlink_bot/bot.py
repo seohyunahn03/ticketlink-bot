@@ -695,8 +695,7 @@ cls: (el.className || '').substring(0, 60)
                     window._coord_ac.abort();
                     delete window._coord_ac;
                 }
-                const el = document.getElementById('_coord_picker_overlay');
-                if (el) el.remove();
+                document.getElementById('_coord_picker_overlay')?.remove();
                 delete window._captured_coords;
                 delete window._coord_cancelled;
             """)
