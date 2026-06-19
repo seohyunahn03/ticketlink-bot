@@ -80,17 +80,6 @@ async def _draw_zone_rect(
     """)
 
 
-def _coord_list_to_zones(macro: dict) -> list[dict]:
-    """하위호환: 기존 seat_area/seat_color를 zone으로 변환"""
-    zones = macro.get("seat_zones", [])
-    if not zones:
-        area = macro.get("seat_area", [0, 0, 0, 0])
-        color = macro.get("seat_color", "C8C8C8")
-        tol = macro.get("color_tolerance", 20)
-        if any(area):
-            zones = [{"area": area, "color": color, "tolerance": tol}]
-    return zones
-
 
 def _setup_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
@@ -145,19 +134,19 @@ async def _main(args: argparse.Namespace) -> int:
 ║   통합매크로 방식으로 Chrome에서 직접 우클릭하며        ║
 ║   좌표를 설정합니다.                                    ║
 ║                                                        ║
-║   (각 단계: Chrome에서 해당 위치 우클릭 → Enter)        ║
-║   (건너뛰려면 그냥 Enter)                               ║
+║   (각 단계: Chrome에서 해당 위치를 우클릭하세요)          ║
+║   (건너뛰려면 ESC)                                       ║
 ╚════════════════════════════════════════════════════════╝
             """)
             macro = cfg.setdefault("macro", {})
 
             # 1. 예매/확인/선택완료/결제 좌표
             steps = [
-                ("click1",      "1/6 📌 예매하기 버튼을 우클릭하세요"),
-                ("click2",      "2/6 📌 확인 버튼 (예매안내 모달)"),
-                ("section_click", "3/6 📌 구역선택 (없으면 엔터)"),
-                ("click3",      "4/6 📌 선택완료 버튼"),
-                ("click4",      "5/6 📌 결제하기 버튼 (없으면 엔터)"),
+                ("click1",      "1/7 📌 예매하기 버튼을 우클릭하세요"),
+                ("click2",      "2/7 📌 확인 버튼 (예매안내 모달)"),
+                ("section_click", "3/7 📌 구역선택 (없으면 ESC)"),
+                ("click3",      "4/7 📌 선택완료 버튼"),
+                ("click4",      "5/7 📌 결제하기 버튼 (없으면 ESC)"),
             ]
             for key, prompt in steps:
                 print(f"\n{prompt}")
@@ -171,8 +160,8 @@ async def _main(args: argparse.Namespace) -> int:
 
             # 2. 날짜/회차 (선택)
             for key, prompt in [
-                ("date_click", "6/6 📌 날짜 선택 (없으면 엔터)"),
-                ("round_click", "7/6 📌 회차 선택 (없으면 엔터)"),
+                ("date_click", "6/7 📌 날짜 선택 (없으면 ESC)"),
+                ("round_click", "7/7 📌 회차 선택 (없으면 ESC)"),
             ]:
                 print(f"\n{prompt}")
                 print("    (Chrome에서 우클릭 → 좌표 저장 | ESC → 건너뛰기)")
@@ -191,11 +180,9 @@ async def _main(args: argparse.Namespace) -> int:
 ║   (예: 1루측, 3루측, 외야 등 구역별 색상이 다를 때)     ║
 ╚════════════════════════════════════════════════════════╝
             """)
-            zone_count_str = input("    구역(zone) 개수 (기본 1, 최대 3): ").strip()
-            try:
-                zone_count = max(1, min(3, int(zone_count_str)))
-            except ValueError:
-                zone_count = 1
+            zone_count = 1
+            print("    🏟️ 구역(zone) 1개를 기본 설정합니다.")
+            print("    (다중 구역이 필요하면 설정 파일에서 seat_zones를 추가하세요)")
 
             seat_zones = []
             for zi in range(zone_count):
@@ -683,8 +670,8 @@ async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
 ║   통합매크로 방식으로 Chrome에서 직접 우클릭하며        ║
 ║   좌표를 설정합니다.                                    ║
 ║                                                        ║
-║   (각 단계: Chrome에서 해당 위치 우클릭 → Enter)        ║
-║   (건너뛰려면 그냥 Enter)                               ║
+║   (각 단계: Chrome에서 해당 위치를 우클릭하세요)         ║
+║   (건너뛰려면 ESC)                                       ║
 ╚════════════════════════════════════════════════════════╝""")
         macro = cfg.setdefault("macro", {})
 
@@ -709,11 +696,8 @@ async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
 
         # 좌석 영역 설정
         print("\n" + "═" * 50)
-        print("  🏟️ 좌석 검색 영역 설정")
-        print("  (여러 구역 가능: 1루측, 3루측, 외야...)")
-        zone_count_str = input("    구역 개수 (1~3, 기본 1): ").strip()
-        try: zone_count = max(1, min(3, int(zone_count_str)))
-        except ValueError: zone_count = 1
+        print("  🏟️ 좌석 검색 영역 설정 (기본 1개 구역)")
+        zone_count = 1
 
         seat_zones = []
         for zi in range(zone_count):
@@ -859,17 +843,18 @@ async def _interactive_setup(bot: Bot, cfg: dict) -> int:
     macro = cfg.setdefault("macro", {})
 
     steps = [
-        ("click1", "1/8 📌 예매하기 버튼을 클릭하세요"),
-        ("click2", "2/8 📌 확인 버튼을 클릭하세요 (예매안내 모달)"),
-        ("section_click", "3/8 📌 구역선택 버튼 (없으면 엔터)"),
-        ("click3", "4/8 📌 선택완료 버튼을 클릭하세요"),
-        ("click4", "5/8 📌 결제하기 버튼 (없으면 엔터)"),
-        ("date_click", "6/8 📌 날짜 선택 버튼을 클릭 (없으면 엔터)"),
-        ("round_click", "7/8 📌 회차 선택 버튼을 클릭 (없으면 엔터)"),
+        ("click1", "1/7 📌 예매하기 버튼을 우클릭하세요"),
+        ("click2", "2/7 📌 확인 버튼을 우클릭하세요 (예매안내 모달)"),
+        ("section_click", "3/7 📌 구역선택 (없으면 ESC)"),
+        ("click3", "4/7 📌 선택완료 버튼을 우클릭하세요"),
+        ("click4", "5/7 📌 결제하기 버튼 (없으면 ESC)"),
+        ("date_click", "6/7 📌 날짜 선택 (없으면 ESC)"),
+        ("round_click", "7/7 📌 회차 선택 (없으면 ESC)"),
     ]
 
     for key, prompt in steps:
-        input(f"\n{prompt}\n    준비되면 Enter → ")
+        print(f"\n{prompt}")
+        print("    (Chrome에서 우클릭 → 좌표 저장 | ESC 또는 timeout → 건너뛰기)")
         coord = await pick_coordinates(bot)
         if coord:
             macro[key] = [coord["x"], coord["y"]]
@@ -877,35 +862,30 @@ async def _interactive_setup(bot: Bot, cfg: dict) -> int:
         else:
             print("    ⏭️ 건너뜀")
 
-    # 좌석 범위 설정 — 다중 구역(zone) 지원
+    # 좌석 범위 설정 — 단일 구역(zone) 기본
     print("""
 ╔════════════════════════════════════════════════════════╗
-║   🏟️ 좌석 검색 영역 설정                             ║
+║   🏟️ 좌석 검색 영역 설정 (기본 1개 구역)             ║
 ║                                                        ║
-║   여러 구역(zone)을 설정할 수 있습니다.                ║
-║   zone 2+는 선택사항 (없으면 엔터로 건너뛰기).         ║
+║   다중 구역이 필요하면 설정 파일에서 seat_zones를      ║
+║   직접 추가하세요.                                      ║
 ╚════════════════════════════════════════════════════════╝
     """)
 
-    zone_count_str = input("    구역(zone) 개수 (기본 1, 최대 3): ").strip()
-    try:
-        zone_count = max(1, min(3, int(zone_count_str)))
-    except ValueError:
-        zone_count = 1
+    zone_count = 1
 
     seat_zones = []
     for zi in range(zone_count):
         print(f"\n─── Zone {zi + 1} ───")
-        input(f"    {zi+1}-① ↖좌상단 클릭 → Enter ")
+        print(f"    {zi+1}-① ↖좌상단 우클릭 → 좌표 저장")
         p1 = await pick_coordinates(bot)
-        input(f"    {zi+1}-② ↘우하단 클릭 → Enter ")
+        print(f"    {zi+1}-② ↘우하단 우클릭 → 좌표 저장")
         p2 = await pick_coordinates(bot)
 
         if p1 and p2:
             await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
 
-            print(f"    {zi+1}-③ 빈 좌석(밝은색) 클릭 → Enter")
-            input("       ")
+            print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → 좌표 저장")
             color_coord = await pick_coordinates(bot)
             bgr = "C8C8C8"
             if color_coord:

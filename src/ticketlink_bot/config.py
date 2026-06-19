@@ -38,9 +38,9 @@ DEFAULT_CONFIG = {
         "section_click": [0, 0],# 구역선택 좌표 (선택)
         # ── 좌석 검색 영역 (다중 구역) ──
         # 통합매크로 방식: 여러 구역(zone) 각각 영역+색상 설정
-        # 각 zone: [↖x, ↖y, ↘x, ↘y, "BGR색상", 오차범위]
+        # 각 zone: {area: [↖x, ↖y, ↘x, ↘y], color: "BGR색상", tolerance: 오차범위}
         "seat_zones": [
-            # [0, 0, 0, 0, "C8C8C8", 20],  # 예시: 1구역
+            # {"area": [0, 0, 0, 0], "color": "C8C8C8", "tolerance": 20},  # 예시: 1구역
         ],
         # 하위호환: 단일 영역/색상 (zones가 비어있으면 이 값 사용)
         "seat_area": [0, 0, 0, 0],

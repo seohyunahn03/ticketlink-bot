@@ -550,8 +550,8 @@ Object.defineProperty(document, 'all', {
                 // 앞쪽 형제 중 img 찾기
                 let el = inp.previousElementSibling;
                 while (el) {
-                    if (el.tagName === 'IMG') return el._hermes_selector || 'img';
-                    if (el.querySelector('img')) return el.querySelector('img')._hermes_selector || 'img';
+                    if (el.tagName === 'IMG') return 'img';
+                    if (el.querySelector('img')) return 'img';
                     el = el.previousElementSibling;
                 }
             }

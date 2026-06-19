@@ -17,6 +17,30 @@ logger = logging.getLogger("ticketlink_bot")
 TICKETLINK_DOMAIN = "ticketlink.co.kr"
 
 
+async def _wait_for_url_change(bot: "Bot", old_url: str, timeout: int = 10) -> str:
+    """URL이 변경될 때까지 폴링. 변경되면 새 URL 반환, 타임아웃 시 old_url 반환."""
+    import time
+    start = time.time()
+    while time.time() - start < timeout:
+        url = await bot.get_url()
+        if url != old_url:
+            return url
+        await asyncio.sleep(0.3)
+    return old_url
+
+
+async def _wait_for_element(bot: "Bot", text_contains: str, timeout: int = 10) -> bool:
+    """페이지에 특정 텍스트가 나타날 때까지 폴링."""
+    import time
+    start = time.time()
+    while time.time() - start < timeout:
+        text = await bot.get_page_text(2000)
+        if text_contains in text:
+            return True
+        await asyncio.sleep(0.3)
+    return False
+
+
 async def scan_and_book(
     bot: Bot,
     auto: bool = False,
@@ -57,7 +81,7 @@ async def scan_and_book(
             logger.info("🔍 '%s' 경기 검색 중...", team_keyword)
             clicked = await _find_and_click_game(bot, team_keyword)
             if clicked:
-                await asyncio.sleep(4)
+                url = await _wait_for_url_change(bot, url, timeout=6)
                 btns = await bot.find_buttons(["예매하기", "예매", "안심", "클린예매", "바로예매"])
 
         if btns:
@@ -84,11 +108,10 @@ async def scan_and_book(
                     await bot.click_element(target["text"][:10])
 
                 # 2.5 모달 처리 (클린예매/취소표대기 선택)
-                await asyncio.sleep(2)
                 modal_closed = await _handle_booking_modal(bot)
 
-                await asyncio.sleep(3)
-                new_url = await bot.get_url()
+                current_url = await bot.get_url()
+                new_url = await _wait_for_url_change(bot, current_url, timeout=5)
                 result["url"] = new_url
                 logger.info("📍 %s", new_url)
 
@@ -106,8 +129,7 @@ async def scan_and_book(
                     result["message"] = "버튼 클릭 완료 (캡차 스킵)"
 
                 # 4. 최종 페이지 확인
-                await asyncio.sleep(3)
-                final_url = await bot.get_url()
+                final_url = await _wait_for_url_change(bot, new_url, timeout=5)
                 final_text = await bot.get_page_text(500)
                 result["url"] = final_url
                 logger.info("💺 최종: %s", final_url)
@@ -158,7 +180,7 @@ async def click_and_book(
     await bot.cmd("Input.dispatchMouseEvent", {
         "type": "mouseReleased", "x": x1, "y": y1, "button": "left", "clickCount": 1,
     })
-    await asyncio.sleep(4)
+    url = await _wait_for_url_change(bot, url, timeout=6)
 
     # 2. 확인 클릭
     x2, y2 = click2
@@ -169,10 +191,9 @@ async def click_and_book(
     await bot.cmd("Input.dispatchMouseEvent", {
         "type": "mouseReleased", "x": x2, "y": y2, "button": "left", "clickCount": 1,
     })
-    await asyncio.sleep(4)
+    new_url = await _wait_for_url_change(bot, url, timeout=6)
 
     # 3. 페이지 변화 확인
-    new_url = await bot.get_url()
     new_title = await bot.get_title()
     result["url"] = new_url
     logger.info("📍 %s", new_url)
@@ -192,8 +213,7 @@ async def click_and_book(
         result["message"] = "✅ 좌표 클릭 완료 (캡차 스킵)"
 
     # 5. 최종 상태
-    await asyncio.sleep(2)
-    final_url = await bot.get_url()
+    final_url = await _wait_for_url_change(bot, new_url, timeout=5)
     final_text = await bot.get_page_text(300)
     result["url"] = final_url
     logger.info("💺 최종: %s", final_url)
@@ -490,7 +510,7 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
         logger.error(result["message"])
         return result
     await _click(c1[0], c1[1], "예매하기")
-    await asyncio.sleep(click_wait)
+    url = await _wait_for_url_change(bot, url, timeout=click_wait + 5)
 
     # ===== 1.5 날짜/회차 자동선택 =====
     dc = macro.get("date_click", [0, 0])
@@ -505,8 +525,9 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
     # ===== 2. 확인 클릭 =====
     c2 = macro.get("click2", [0, 0])
     if c2[0] != 0 or c2[1] != 0:
+        old_url = await bot.get_url()
         await _click(c2[0], c2[1], "확인")
-        await asyncio.sleep(click_wait)
+        url = await _wait_for_url_change(bot, old_url, timeout=click_wait + 5)
 
     # ===== 3. 보안문자 처리 =====
     if cfg.get("booking", {}).get("auto_captcha", True):
@@ -515,7 +536,7 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
             result["message"] = "보안문자 해결 실패"
             return result
         logger.info("✅ 보안문자 처리 완료")
-        await asyncio.sleep(2)
+        url = await _wait_for_url_change(bot, url, timeout=5)
 
     # ===== 4. 좌석 색상 검색 & 클릭 (다중 구역 지원) =====
     seat_area = macro.get("seat_area", [0, 0, 0, 0])
