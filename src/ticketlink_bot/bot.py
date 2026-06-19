@@ -6,6 +6,9 @@ Playwright/Selenium 사용 안 함 → 탐지 제로.
 """
 import asyncio
 import json
+import os
+import subprocess
+import time
 import urllib.request
 from typing import Optional
 
@@ -28,6 +31,97 @@ def _chrome_launch_help() -> str:
     if alt and alt != exe:
         help_text += f"\n  또는: {alt} --remote-debugging-port=9222"
     return help_text
+
+
+def _find_chrome() -> str | None:
+    """OS별 Chrome 실행 파일 경로 탐색"""
+    import sys, shutil
+    system = sys.platform
+    candidates = []
+    if system == "win32":
+        candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        ]
+    elif system == "darwin":
+        candidates = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        ]
+    else:  # Linux
+        candidates = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+        ]
+    # PATH에서도 검색
+    for name in ("chrome", "google-chrome", "chromium", "chromium-browser"):
+        p = shutil.which(name)
+        if p:
+            candidates.append(p)
+    # 존재하는 첫 번째 경로 반환
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None
+
+
+def launch_chrome(
+    port: int = 9222,
+    user_data_dir: str | None = None,
+    timeout: float = 15.0,
+) -> str | None:
+    """
+    Chrome을 CDP 모드로 자동 실행하고 WebSocket URL 반환.
+
+    Args:
+        port: CDP 포트 (기본 9222)
+        user_data_dir: Chrome 사용자 데이터 디렉토리 (기본: ~/.config/chrome-cdp)
+        timeout: CDP 준비 대기 최대 시간 (초)
+
+    Returns:
+        WebSocket URL (성공 시) or None (실패 시)
+    """
+    import subprocess, sys, time, urllib.request
+
+    # 1. Chrome 실행 파일 찾기
+    exe = _find_chrome()
+    if not exe:
+        return None
+
+    # 2. 사용자 데이터 디렉토리
+    if user_data_dir is None:
+        home = os.path.expanduser("~")
+        if sys.platform == "win32":
+            user_data_dir = os.path.join(home, ".config", "chrome-cdp")
+        else:
+            user_data_dir = os.path.join(home, ".config", "chrome-cdp")
+    os.makedirs(user_data_dir, exist_ok=True)
+
+    # 3. Chrome 실행 (이미 CDP 포트로 실행 중이면 새 창만 띄움)
+    import subprocess
+    try:
+        subprocess.Popen(
+            [exe, f"--remote-debugging-port={port}", f"--user-data-dir={user_data_dir}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return None
+
+    # 4. CDP 준비 대기 (최대 timeout 초)
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            resp = urllib.request.urlopen(
+                f"http://localhost:{port}/json/version", timeout=2
+            )
+            data = json.loads(resp.read())
+            return data["webSocketDebuggerUrl"]
+        except Exception:
+            time.sleep(0.5)
+    return None
 
 
 def discover_cdp_url(ports: list[int] | None = None) -> Optional[str]:
@@ -229,12 +323,25 @@ Object.defineProperty(document, 'all', {
         logger = __import__('logging').getLogger("ticketlink_bot")
         logger.info("🛡️ 스텔스 우회 적용 (12개 항목)")
 
-    async def connect(self, cdp_url: str | None = None) -> None:
+    async def connect(self, cdp_url: str | None = None, auto_launch: bool = True) -> None:
         """CDP WebSocket 연결"""
         if cdp_url:
             self._cdp_url = cdp_url
         if not self._cdp_url:
             self._cdp_url = discover_cdp_url()
+        if not self._cdp_url and auto_launch:
+            # Chrome 자동 실행 시도
+            import logging
+            logger = logging.getLogger("ticketlink_bot")
+            logger.info("🚀 Chrome 자동 실행 중...")
+            self._cdp_url = launch_chrome()
+            if not self._cdp_url:
+                raise ConnectionError(
+                    "Chrome을 찾을 수 없거나 자동 실행에 실패했습니다.\n"
+                    "Chrome을 직접 설치하거나 아래 명령어로 실행해주세요:\n"
+                    + _chrome_launch_help()
+                )
+            logger.info("✅ Chrome 자동 실행 완료")
         if not self._cdp_url:
             raise ConnectionError(
                 "Chrome CDP 연결 실패.\n"

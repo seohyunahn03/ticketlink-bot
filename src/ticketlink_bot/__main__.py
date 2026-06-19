@@ -13,7 +13,7 @@ import asyncio
 import logging
 import sys
 
-from .bot import Bot, discover_cdp_url
+from .bot import Bot
 from .booking import scan_and_book, click_and_book, pick_coordinates, full_auto_book
 from .config import load_config, save_config
 
@@ -106,22 +106,19 @@ async def _main(args: argparse.Namespace) -> int:
 
     _setup_logging(args.verbose)
 
-    # CDP URL 확인
-    cdp_url = discover_cdp_url(cfg.get("chrome", {}).get("cdp_ports", [9222, 9223]))
-    if not cdp_url:
-        from .bot import _chrome_launch_help
+    bot = Bot()
+    try:
+        await bot.connect(auto_launch=True)
+    except ConnectionError:
         print(
             "❌ Chrome CDP 연결 실패\n"
-            "Chrome을 --remote-debugging-port=9222 로 실행해주세요:\n"
-            + _chrome_launch_help()
+            "Chrome을 찾을 수 없거나 자동 실행에 실패했습니다.\n"
+            "직접 실행: Chrome → --remote-debugging-port=9222"
         )
         return 1
 
     print(f"✅ Chrome CDP 연결")
-    print(f"   {cdp_url[:60]}...")
-
-    bot = Bot()
-    await bot.connect(cdp_url)
+    print(f"   {bot._cdp_url[:60]}...")
 
     # 티켓링크 탭 찾기
     tab = await bot.find_tab("ticketlink")
@@ -650,18 +647,17 @@ async def _interactive_menu() -> None:
 
 async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
     """메뉴에서 Chrome CDP 연결 후 모드 실행"""
-    # Chrome CDP 연결
-    cdp_url = discover_cdp_url(cfg.get("chrome", {}).get("cdp_ports", [9222, 9223]))
-    if not cdp_url:
-        from .bot import _chrome_launch_help
+    # Chrome CDP 연결 (자동 실행 포함)
+    bot = Bot()
+    try:
+        await bot.connect(auto_launch=True)
+    except ConnectionError:
         print("\n❌ Chrome CDP 연결 실패")
-        print("Chrome을 --remote-debugging-port=9222 로 실행해주세요:")
-        print(_chrome_launch_help())
+        print("Chrome을 찾을 수 없거나 자동 실행에 실패했습니다.")
         return 1
 
     print(f"✅ Chrome CDP 연결")
-    bot = Bot()
-    await bot.connect(cdp_url)
+    print(f"   {bot._cdp_url[:60]}...")
 
     # 티켓링크 탭 찾기
     tab = await bot.find_tab("ticketlink")
