@@ -110,13 +110,18 @@ async def _main(args: argparse.Namespace) -> int:
         print(f"✅ Chrome CDP 연결")
         print(f"   {bot._cdp_url[:60]}...")
 
-        # 티켓링크 탭 찾기
+        # 티켓링크 탭 찾기 (없으면 자동 생성)
         tab = await bot.find_tab("ticketlink")
         if not tab:
             tab = await bot.find_tab("야구")
         if not tab:
-            print("❌ 티켓링크 탭 없음. Chrome에서 ticketlink.co.kr을 열어주세요!")
-            return 1
+            default_url = cfg.get("booking", {}).get(
+                "default_url", "https://www.ticketlink.co.kr/sports/137/59"
+            )
+            print(f"🚀 새 탭 생성: {default_url}")
+            result = await bot.cmd("Target.createTarget", {"url": default_url})
+            tab = result
+            await asyncio.sleep(2)
 
         print(f"✅ 탭: {tab.get('title', '?')[:50]}")
         await bot.attach(tab["targetId"])
@@ -142,11 +147,12 @@ async def _main(args: argparse.Namespace) -> int:
 
             # 1. 예매/확인/선택완료/결제 좌표
             steps = [
-                ("click1",      "1/7 📌 예매하기 버튼을 우클릭하세요"),
-                ("click2",      "2/7 📌 확인 버튼 (예매안내 모달)"),
-                ("section_click", "3/7 📌 구역선택 (없으면 ESC)"),
-                ("click3",      "4/7 📌 선택완료 버튼"),
-                ("click4",      "5/7 📌 결제하기 버튼 (없으면 ESC)"),
+                ("click1",      "1/8 📌 예매하기 버튼을 우클릭하세요"),
+                ("click2",      "2/8 📌 확인 버튼 (예매안내 모달)"),
+                ("section_click", "3/8 📌 구역선택 (없으면 ESC)"),
+                ("captcha_submit", "4/8 📌 보안문자 입력 확인 버튼 (없으면 ESC)"),
+                ("click3",      "5/8 📌 선택완료 버튼"),
+                ("click4",      "6/8 📌 결제하기 버튼 (없으면 ESC)"),
             ]
             for key, prompt in steps:
                 print(f"\n{prompt}")
@@ -160,8 +166,8 @@ async def _main(args: argparse.Namespace) -> int:
 
             # 2. 날짜/회차 (선택)
             for key, prompt in [
-                ("date_click", "6/7 📌 날짜 선택 (없으면 ESC)"),
-                ("round_click", "7/7 📌 회차 선택 (없으면 ESC)"),
+                ("date_click", "7/8 📌 날짜 선택 (없으면 ESC)"),
+                ("round_click", "8/8 📌 회차 선택 (없으면 ESC)"),
             ]:
                 print(f"\n{prompt}")
                 print("    (Chrome에서 우클릭 → 좌표 저장 | ESC → 건너뛰기)")
@@ -843,13 +849,14 @@ async def _interactive_setup(bot: Bot, cfg: dict) -> int:
     macro = cfg.setdefault("macro", {})
 
     steps = [
-        ("click1", "1/7 📌 예매하기 버튼을 우클릭하세요"),
-        ("click2", "2/7 📌 확인 버튼을 우클릭하세요 (예매안내 모달)"),
-        ("section_click", "3/7 📌 구역선택 (없으면 ESC)"),
-        ("click3", "4/7 📌 선택완료 버튼을 우클릭하세요"),
-        ("click4", "5/7 📌 결제하기 버튼 (없으면 ESC)"),
-        ("date_click", "6/7 📌 날짜 선택 (없으면 ESC)"),
-        ("round_click", "7/7 📌 회차 선택 (없으면 ESC)"),
+        ("click1", "1/8 📌 예매하기 버튼을 우클릭하세요"),
+        ("click2", "2/8 📌 확인 버튼을 우클릭하세요 (예매안내 모달)"),
+        ("section_click", "3/8 📌 구역선택 (없으면 ESC)"),
+        ("captcha_submit", "4/8 📌 보안문자 입력 확인 버튼 (없으면 ESC)"),
+        ("click3", "5/8 📌 선택완료 버튼을 우클릭하세요"),
+        ("click4", "6/8 📌 결제하기 버튼 (없으면 ESC)"),
+        ("date_click", "7/8 📌 날짜 선택 (없으면 ESC)"),
+        ("round_click", "8/8 📌 회차 선택 (없으면 ESC)"),
     ]
 
     for key, prompt in steps:

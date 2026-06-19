@@ -568,6 +568,25 @@ Object.defineProperty(document, 'all', {
                 return t
         return None
 
+    async def wait_for_new_tab(self, keywords: list[str], timeout: int = 15) -> dict | None:
+        """새 탭/팝업이 나타날 때까지 폴링 (티켓링크 예매하기 → 새 창)"""
+        import time
+        known_ids = {t["targetId"] for t in
+                     (await self.cmd("Target.getTargets")).get("targetInfos", [])}
+        start = time.time()
+        while time.time() - start < timeout:
+            targets = (await self.cmd("Target.getTargets")).get("targetInfos", [])
+            for t in targets:
+                tid = t["targetId"]
+                if tid in known_ids:
+                    continue
+                url = t.get("url", "")
+                title = t.get("title", "")
+                if any(kw in url or kw in title for kw in keywords):
+                    return t
+            await asyncio.sleep(0.5)
+        return None
+
     async def attach(self, target_id: str) -> None:
         """특정 탭에 연결"""
         result = await self.cmd(

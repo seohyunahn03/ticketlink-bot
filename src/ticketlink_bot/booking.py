@@ -512,6 +512,19 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
     await _click(c1[0], c1[1], "예매하기")
     url = await _wait_for_url_change(bot, url, timeout=click_wait + 5)
 
+    # ===== 1.2 새 창/팝업 감지 =====
+    # 티켓링크는 예매하기 버튼을 누르면 새 창(팝업)으로 예매 페이지를 염
+    new_tab = await bot.wait_for_new_tab(
+        ["ticketlink", "야구", "reserve", "예매"],
+        timeout=5
+    )
+    if new_tab:
+        logger.info("🔀 새 예매 창 감지! 전환: %s", new_tab.get("url", "")[:60])
+        await bot.attach(new_tab["targetId"])
+        url = await bot.get_url()
+    else:
+        logger.info("  → 새 창 없음, 현재 탭 유지")
+
     # ===== 1.5 날짜/회차 자동선택 =====
     dc = macro.get("date_click", [0, 0])
     rc = macro.get("round_click", [0, 0])
@@ -537,6 +550,13 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
             return result
         logger.info("✅ 보안문자 처리 완료")
         url = await _wait_for_url_change(bot, url, timeout=5)
+
+    # ===== 3.5 보안문자 입력 확인 버튼 클릭 =====
+    cs = macro.get("captcha_submit", [0, 0])
+    if cs[0] != 0 or cs[1] != 0:
+        await asyncio.sleep(0.5)
+        await _click(cs[0], cs[1], "보안문자 확인")
+        url = await _wait_for_url_change(bot, url, timeout=click_wait + 3)
 
     # ===== 4. 좌석 색상 검색 & 클릭 (다중 구역 지원) =====
     seat_area = macro.get("seat_area", [0, 0, 0, 0])
@@ -594,6 +614,9 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
             await asyncio.sleep(click_wait)
             if c2[0] != 0 or c2[1] != 0:
                 await _click(c2[0], c2[1], "확인")
+                await asyncio.sleep(click_wait)
+            if cs[0] != 0 or cs[1] != 0:
+                await _click(cs[0], cs[1], "보안문자 확인(재시도)")
                 await asyncio.sleep(click_wait)
 
         if found_group:

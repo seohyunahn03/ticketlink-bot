@@ -22,6 +22,7 @@ DEFAULT_CONFIG = {
         "ticket_count": 2,
         "prefer_seat": "",
         "auto_captcha": True,
+        "default_url": "https://www.ticketlink.co.kr/sports/137/59",
     },
     # xAI Vision (캡차)
     "xai": {
@@ -33,6 +34,7 @@ DEFAULT_CONFIG = {
         "click2": [0, 0],       # 확인 좌표 (예매안내 모달)
         "click3": [0, 0],       # 선택완료 좌표
         "click4": [0, 0],       # 결제하기 좌표
+        "captcha_submit": [0, 0],  # 보안문자 입력 확인 버튼 좌표
         "date_click": [0, 0],   # 날짜 좌표 (선택)
         "round_click": [0, 0],  # 회차 좌표 (선택)
         "section_click": [0, 0],# 구역선택 좌표 (선택)
