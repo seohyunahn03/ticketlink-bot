@@ -142,10 +142,10 @@ async def _main(args: argparse.Namespace) -> int:
 ╔════════════════════════════════════════════════════════╗
 ║   🎯 티켓링크봇 — 좌표 따기 모드                      ║
 ║                                                        ║
-║   통합매크로 방식으로 Chrome에서 직접 클릭하며          ║
+║   통합매크로 방식으로 Chrome에서 직접 우클릭하며        ║
 ║   좌표를 설정합니다.                                    ║
 ║                                                        ║
-║   (각 단계: Chrome에서 해당 위치 클릭 → Enter)          ║
+║   (각 단계: Chrome에서 해당 위치 우클릭 → Enter)        ║
 ║   (건너뛰려면 그냥 Enter)                               ║
 ╚════════════════════════════════════════════════════════╝
         """)
@@ -153,7 +153,7 @@ async def _main(args: argparse.Namespace) -> int:
 
         # 1. 예매/확인/선택완료/결제 좌표
         steps = [
-            ("click1",      "1/6 📌 예매하기 버튼을 클릭하세요"),
+            ("click1",      "1/6 📌 예매하기 버튼을 우클릭하세요"),
             ("click2",      "2/6 📌 확인 버튼 (예매안내 모달)"),
             ("section_click", "3/6 📌 구역선택 (없으면 엔터)"),
             ("click3",      "4/6 📌 선택완료 버튼"),
@@ -161,7 +161,7 @@ async def _main(args: argparse.Namespace) -> int:
         ]
         for key, prompt in steps:
             print(f"\n{prompt}")
-            input("    클릭 후 Enter → ")
+            input("    우클릭 후 Enter → ")
             coord = await pick_coordinates(bot)
             if coord:
                 macro[key] = [coord["x"], coord["y"]]
@@ -175,7 +175,7 @@ async def _main(args: argparse.Namespace) -> int:
             ("round_click", "7/6 📌 회차 선택 (없으면 엔터)"),
         ]:
             print(f"\n{prompt}")
-            input("    클릭 후 Enter → ")
+            input("    우클릭 후 Enter → ")
             coord = await pick_coordinates(bot)
             if coord:
                 macro[key] = [coord["x"], coord["y"]]
@@ -200,9 +200,9 @@ async def _main(args: argparse.Namespace) -> int:
         seat_zones = []
         for zi in range(zone_count):
             print(f"\n─── Zone {zi + 1} ───")
-            input(f"    {zi+1}-① ↖좌상단 클릭 → Enter ")
+            input(f"    {zi+1}-① ↖좌상단 우클릭 → Enter ")
             p1 = await pick_coordinates(bot)
-            input(f"    {zi+1}-② ↘우하단 클릭 → Enter ")
+            input(f"    {zi+1}-② ↘우하단 우클릭 → Enter ")
             p2 = await pick_coordinates(bot)
 
             if p1 and p2:
@@ -210,7 +210,7 @@ async def _main(args: argparse.Namespace) -> int:
                 await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
 
                 # 색상 설정
-                print(f"    {zi+1}-③ 빈 좌석(밝은색) 클릭 → Enter")
+                print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → Enter")
                 input("       ")
                 color_coord = await pick_coordinates(bot)
                 bgr = "C8C8C8"
@@ -681,16 +681,16 @@ async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
 ╔════════════════════════════════════════════════════════╗
 ║   🎯 티켓링크봇 — 좌표 따기 모드                      ║
 ║                                                        ║
-║   통합매크로 방식으로 Chrome에서 직접 클릭하며          ║
+║   통합매크로 방식으로 Chrome에서 직접 우클릭하며        ║
 ║   좌표를 설정합니다.                                    ║
 ║                                                        ║
-║   (각 단계: Chrome에서 해당 위치 클릭 → Enter)          ║
+║   (각 단계: Chrome에서 해당 위치 우클릭 → Enter)        ║
 ║   (건너뛰려면 그냥 Enter)                               ║
 ╚════════════════════════════════════════════════════════╝""")
         macro = cfg.setdefault("macro", {})
 
         steps = [
-            ("click1",      "1/7 📌 예매하기 버튼을 클릭하세요"),
+            ("click1",      "1/7 📌 예매하기 버튼을 우클릭하세요"),
             ("click2",      "2/7 📌 확인 버튼 (예매안내 모달)"),
             ("section_click", "3/7 📌 구역선택 (없으면 엔터)"),
             ("click3",      "4/7 📌 선택완료 버튼"),
@@ -700,7 +700,7 @@ async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
         ]
         for key, prompt in steps:
             print(f"\n{prompt}")
-            input("    클릭 후 Enter → ")
+            input("    우클릭 후 Enter → ")
             coord = await pick_coordinates(bot)
             if coord:
                 macro[key] = [coord["x"], coord["y"]]
@@ -719,13 +719,13 @@ async def _menu_connect_and_run(cfg: dict, mode: str) -> int:
         seat_zones = []
         for zi in range(zone_count):
             print(f"\n─── Zone {zi + 1} ───")
-            input(f"    {zi+1}-① ↖좌상단 클릭 → Enter ")
+            input(f"    {zi+1}-① ↖좌상단 우클릭 → Enter ")
             p1 = await pick_coordinates(bot)
-            input(f"    {zi+1}-② ↘우하단 클릭 → Enter ")
+            input(f"    {zi+1}-② ↘우하단 우클릭 → Enter ")
             p2 = await pick_coordinates(bot)
             if p1 and p2:
                 await _draw_zone_rect(bot, p1["x"], p1["y"], p2["x"], p2["y"], zi + 1)
-                print(f"    {zi+1}-③ 빈 좌석(밝은색) 클릭 → Enter")
+                print(f"    {zi+1}-③ 빈 좌석(밝은색) 우클릭 → Enter")
                 input("       ")
                 cc = await pick_coordinates(bot)
                 bgr = "C8C8C8"

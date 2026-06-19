@@ -263,25 +263,25 @@ async def _handle_captcha_coords(bot: Bot) -> bool:
 
 async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
     """
-    좌표 따기 툴 — Chrome 페이지에 오버레이를 띄워 클릭 좌표 캡처.
+    좌표 따기 툴 — Chrome 페이지에 오버레이를 띄워 우클릭 좌표 캡처.
 
-    통합매크로 방식: 실시간 마우스 좌표 표시, 좌클릭 저장, ESC 취소.
+    통합매크로 방식: 실시간 마우스 좌표 표시, 우클릭 저장, ESC 취소.
 
     Args:
         bot: CDP Bot
         click_timeout: 최대 대기 시간 (초)
 
     Returns:
-        {"x": x, "y": y} — 클릭한 좌표, 또는 {} (타임아웃/취소)
+        {"x": x, "y": y} — 우클릭한 좌표, 또는 {} (타임아웃/취소)
     """
     import json as _json
 
     url = await bot.get_url()
     logger.info("📍 현재 페이지: %s", url)
-    logger.info("🎯 좌표 따기 — Chrome에서 클릭하세요!")
-    logger.info("   🖱️ 좌클릭 → 좌표 저장")
+    logger.info("🎯 좌표 따기 — Chrome에서 우클릭하세요!")
+    logger.info("   🖱️ 우클릭 → 좌표 저장")
     logger.info("   ⌨️ ESC → 취소")
-    logger.info("   (좌표가 화면 하단에 실시간 표시됩니다)")
+    logger.info("   (우클릭해도 컨텍스트 메뉴 안 뜹니다)")
 
     # 오버레이 스크립트 주입 (통합매크로 스타일)
     await bot.js("""
@@ -304,7 +304,7 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
                     border:1px solid #0f0;
                     font-size:13px; text-align:center; z-index:999999;
                     pointer-events:none;
-                ">🎯 좌표따기 — 좌클릭 저장  |  ESC 취소</div>
+                ">🎯 좌표따기 — 우클릭 저장  |  ESC 취소</div>
 
                 <!-- 하단 좌표 표시 -->
                 <div id="_coord_display" style="
@@ -316,7 +316,7 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
                     font-size:22px; font-weight:bold; text-align:center;
                     pointer-events:none;
                     box-shadow: 0 0 20px rgba(0,255,0,0.3);
-                ">📍 준비 — 페이지를 클릭하세요</div>
+                ">📍 준비 — 페이지를 우클릭하세요</div>
 
                 <!-- 크로스헤어 (마우스 따라다님) -->
                 <div id="_coord_crosshair" style="
@@ -365,8 +365,9 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
             }
         }, true);
 
-        // 클릭 좌표 저장
-        document.addEventListener('click', e => {
+        // 우클릭 좌표 저장 (컨텍스트 메뉴 차단)
+        document.addEventListener('contextmenu', e => {
+            e.preventDefault();
             const x = e.clientX, y = e.clientY;
             const d = document.getElementById('_coord_display');
             if (d) {
@@ -390,7 +391,7 @@ async def pick_coordinates(bot: Bot, click_timeout: int = 60) -> dict:
         }, true);
     """)
 
-    logger.info("✅ 좌표 오버레이 주입 완료! 클릭해보세요.")
+    logger.info("✅ 좌표 오버레이 주입 완료! 우클릭해보세요.")
 
     # 클릭 대기 (최대 click_timeout 초, 0.5초 간격 폴링)
     for _ in range(click_timeout * 2):
