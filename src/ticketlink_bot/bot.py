@@ -381,7 +381,15 @@ Object.defineProperty(document, 'all', {
             # JS 실행 예외 로깅
             exc = result.get("exceptionDetails")
             if exc:
-                _log.warning("⚠️ JS 예외: %s (line %s)", exc.get("text", "?"), exc.get("lineNumber", "?"))
+                _log.warning("⚠️ JS 예외: %s (line %s, col %s)",
+                             exc.get("text", "?"), exc.get("lineNumber", "?"), exc.get("columnNumber", "?"))
+                ex_obj = exc.get("exception")
+                if ex_obj:
+                    _log.warning("   type=%s className=%s description=%s",
+                                 ex_obj.get("type", "?"), ex_obj.get("className", "?"),
+                                 (ex_obj.get("description") or "")[:200])
+                # 실행 중이던 코드 앞부분 로깅
+                _log.warning("   code(60): %s", code.strip()[:60].replace("\n", "\\n"))
             return result.get("result", {}).get("value")
         except ConnectionError:
             await self._reattach()
@@ -392,7 +400,14 @@ Object.defineProperty(document, 'all', {
             })
             exc = result.get("exceptionDetails")
             if exc:
-                _log.warning("⚠️ JS 예외 (재연결 후): %s (line %s)", exc.get("text", "?"), exc.get("lineNumber", "?"))
+                _log.warning("⚠️ JS 예외 (재연결 후): %s (line %s, col %s)",
+                             exc.get("text", "?"), exc.get("lineNumber", "?"), exc.get("columnNumber", "?"))
+                ex_obj = exc.get("exception")
+                if ex_obj:
+                    _log.warning("   type=%s className=%s description=%s",
+                                 ex_obj.get("type", "?"), ex_obj.get("className", "?"),
+                                 (ex_obj.get("description") or "")[:200])
+                _log.warning("   code(60): %s", code.strip()[:60].replace("\n", "\\n"))
             return result.get("result", {}).get("value")
 
     async def _reattach(self) -> None:
