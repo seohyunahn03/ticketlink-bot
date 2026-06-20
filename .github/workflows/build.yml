@@ -23,8 +23,10 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python3 -m pip install --upgrade pip
+          pip3 install -r requirements.txt
+          # tkinter (gui import용, CI ubuntu 이미지에 없음)
+          sudo apt-get update -qq && sudo apt-get install -y -qq python3-tk 2>/dev/null || true
       - name: Check imports
         run: |
           echo "Python: $(python3 --version)"
