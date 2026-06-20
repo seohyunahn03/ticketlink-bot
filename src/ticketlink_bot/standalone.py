@@ -39,7 +39,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 3)
-    seat_click_delay = delays.get("seat_click", 10) / 1000.0
+    seat_click_delay = delays.get("seat_click", 500) / 1000.0
     refresh_delay = delays.get("refresh", 500) / 1000.0
 
     logger.info("=" * 50)
@@ -202,6 +202,10 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     # ===== 4.5 구역선택 =====
     sc = macro.get("section_click", [0, 0])
     if sc[0] != 0 or sc[1] != 0:
+        if stop_event and stop_event.is_set():
+            result["message"] = "⏹️ 사용자 중지"
+            logger.warning("  ⏹️ %s", result["message"])
+            return result
         _wait(1)
         _click(sc[0], sc[1], "구역선택")
         _wait(2)
@@ -209,6 +213,10 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     # ===== 5. 선택완료 =====
     c3 = macro.get("click3", [0, 0])
     if c3[0] != 0 or c3[1] != 0:
+        if stop_event and stop_event.is_set():
+            result["message"] = "⏹️ 사용자 중지"
+            logger.warning("  ⏹️ %s", result["message"])
+            return result
         _wait(1)
         _click(c3[0], c3[1], "선택완료")
         _wait(2)
@@ -216,6 +224,10 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     # ===== 6. 결제하기 =====
     c4 = macro.get("click4", [0, 0])
     if c4[0] != 0 or c4[1] != 0:
+        if stop_event and stop_event.is_set():
+            result["message"] = "⏹️ 사용자 중지"
+            logger.warning("  ⏹️ %s", result["message"])
+            return result
         _wait(1)
         _click(c4[0], c4[1], "결제하기")
         result["stage"] = "payment"
@@ -224,7 +236,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         result["message"] = "✅ 예매 완료!"
 
     result["success"] = True
-    result["stage"] = "complete"
+    if result["stage"] != "payment":
+        result["stage"] = "complete"
     logger.info("  🎉 %s", result["message"])
     return result
 
