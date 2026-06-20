@@ -402,6 +402,14 @@ class TicketlinkGUI(tk.Tk):
         """설정 편집기"""
         frame = self._settings_frame
         frame.grid_columnconfigure(1, weight=1)
+        self._settings_vars = {}
+
+        row = 0
+
+        # ── 예매 기본 ──
+        ttk.Label(frame, text="📋 예매 기본", font=("", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
+        row += 1
 
         fields = [
             ("team", "응원 팀:", self._cfg.get("booking", {}).get("team", "LG")),
@@ -410,18 +418,56 @@ class TicketlinkGUI(tk.Tk):
             ("seat_click", "좌석 딜레이(ms):", "500"),
             ("refresh", "새로고침 간격(ms):", "2000"),
         ]
-
-        self._settings_vars = {}
-        for i, (key, label, default) in enumerate(fields):
-            ttk.Label(frame, text=label).grid(row=i, column=0, sticky="w", padx=8, pady=4)
+        for key, label, default in fields:
+            ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=4)
             var = tk.StringVar(value=default)
-            entry = ttk.Entry(frame, textvariable=var, width=20)
-            entry.grid(row=i, column=1, sticky="w", padx=4, pady=2)
+            ttk.Entry(frame, textvariable=var, width=20).grid(
+                row=row, column=1, sticky="w", padx=4, pady=2)
             self._settings_vars[key] = var
+            row += 1
 
-        ttk.Label(frame, text="").grid(row=len(fields), column=0, pady=8)
+        # ── 캡차 설정 ──
+        row += 1
+        ttk.Label(frame, text="🤖 캡차 (xAI Grok Vision)", font=("", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
+        row += 1
 
-        # 사용 모드 (항상 독립형/시스템 매크로 모드)
+        # auto_captcha 체크박스
+        self._auto_captcha_var = tk.BooleanVar(
+            value=self._cfg.get("booking", {}).get("auto_captcha", True))
+        ttk.Checkbutton(frame, text="자동 캡차 해제 사용",
+                        variable=self._auto_captcha_var).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=2)
+        row += 1
+
+        # xai_api_key (선택, 감춰진 입력)
+        ttk.Label(frame, text="xAI API 키 (선택):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._xai_api_key_var = tk.StringVar(
+            value=self._cfg.get("xai", {}).get("api_key", ""))
+        api_entry = ttk.Entry(frame, textvariable=self._xai_api_key_var,
+                              width=20, show="*")
+        api_entry.grid(row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        # xai_model 선택
+        ttk.Label(frame, text="Vision 모델:").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        models = [
+            "grok-4.20-0309-non-reasoning",
+            "grok-3.9-latest",
+            "grok-3.5-latest",
+        ]
+        self._xai_model_var = tk.StringVar(
+            value=self._cfg.get("xai", {}).get("model", models[0]))
+        model_combo = ttk.Combobox(frame, textvariable=self._xai_model_var,
+                                   values=models, width=20, state="readonly")
+        model_combo.grid(row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        ttk.Label(frame, text="(공란 시 OAuth 인증 또는 환경변수 XAI_API_KEY 사용)",
+                  font=("", 8), foreground="gray").grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
 
     # ── 좌표 따기 ──
 
@@ -640,6 +686,13 @@ class TicketlinkGUI(tk.Tk):
         self._settings_vars["seat_click"].set(str(delays.get("seat_click", 500)))
         self._settings_vars["refresh"].set(str(delays.get("refresh", 2000)))
 
+        # xAI / captcha — cfg → UI 읽기
+        xai_cfg = self._cfg.get("xai", {})
+        self._xai_api_key_var.set(xai_cfg.get("api_key", ""))
+        self._xai_model_var.set(xai_cfg.get("model", "grok-4.20-0309-non-reasoning"))
+        self._auto_captcha_var.set(
+            self._cfg.get("booking", {}).get("auto_captcha", True))
+
     def _collect_ui_to_cfg(self):
         """UI → 설정"""
         macro = self._cfg.setdefault("macro", {})
@@ -699,6 +752,12 @@ class TicketlinkGUI(tk.Tk):
                 delays[k] = int(self._settings_vars[k].get())
             except (ValueError, KeyError):
                 delays[k] = {"click_wait": 3, "seat_click": 500, "refresh": 2000}.get(k, 0)
+
+        # xAI / captcha — UI → cfg 저장
+        xai_cfg = self._cfg.setdefault("xai", {})
+        xai_cfg["api_key"] = self._xai_api_key_var.get()
+        xai_cfg["model"] = self._xai_model_var.get()
+        booking["auto_captcha"] = self._auto_captcha_var.get()
 
     # ── 매크로 실행 ──
 
