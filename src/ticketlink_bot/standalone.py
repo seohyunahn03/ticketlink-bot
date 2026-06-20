@@ -185,11 +185,11 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                     found_group = [seats[0]] if seats else []
 
             if found_group:
-                logger.info("  🎯 빈 좌석 발견! %d석 (%d/30)",
-                             len(found_group), attempt + 1)
+                logger.info("  🎯 빈 좌석 발견! %d석 (%d/%d)",
+                             len(found_group), attempt + 1, max_retries)
                 break
 
-            logger.info("  ↻ 빈 좌석 없음, 새로고침 (%d/30)", attempt + 1)
+            logger.info("  ↻ 빈 좌석 없음, 새로고침 (%d/%d)", attempt + 1, max_retries)
             _reload_page(refresh_delay)  # F5 키
             _click(c1[0], c1[1], "예매하기(재시도)")
             _wait(click_wait)

@@ -674,6 +674,7 @@ class TicketlinkGUI(tk.Tk):
             macro.pop("seat_zones", None)
             macro.pop("seat_area", None)
             macro.pop("seat_color", None)
+            macro.pop("color_tolerance", None)  # zone 삭제 시 잔류 방지
 
         try:
             macro["consecutive_seats"] = int(self._consecutive_var.get())

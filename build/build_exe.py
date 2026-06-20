@@ -69,7 +69,6 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         "--hidden-import=tkinter.filedialog",
         "--hidden-import=tkinter.simpledialog",
         "--hidden-import=tkinter.ttk",
-        "--hidden-import=pynput.mouse._win32",
 
         # Native DLL 강제 수집 (Windows 크래시 방지)
         "--collect-all=numpy",
