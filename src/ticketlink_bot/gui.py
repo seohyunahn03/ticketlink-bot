@@ -368,7 +368,7 @@ class TicketlinkGUI(tk.Tk):
             "x2": tk.StringVar(value=str(area[2]) if area else "0"),
             "y2": tk.StringVar(value=str(area[3]) if area else "0"),
             "color": tk.StringVar(value=color or "C8C8C8"),
-            "tolerance": tk.StringVar(value=str(tolerance or "20")),
+            "tolerance": tk.StringVar(value=str(tolerance) if tolerance is not None else self._tolerance_var.get()),
             "frame": frame,
         }
 
@@ -648,6 +648,7 @@ class TicketlinkGUI(tk.Tk):
                 macro[key] = [int(parts[0]), int(parts[1])]
             except (ValueError, IndexError):
                 macro[key] = [0, 0]
+                logger.warning("⚠️ 좌표 '%s' 파싱 실패 — [0,0] 사용", key)
 
         # Zone
         zones = []

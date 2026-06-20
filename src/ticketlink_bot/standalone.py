@@ -50,6 +50,13 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     click_wait = delays.get("click_wait", 3)
     seat_click_delay = delays.get("seat_click", 500) / 1000.0
     refresh_delay = delays.get("refresh", 2000) / 1000.0
+    # 매크로 제어값 (설정 가능, 기본값은 config.py DEFAULT_CONFIG 참조)
+    max_retries = macro.get("max_retries", 30)
+    max_screenshot_fails = macro.get("max_screenshot_fails", 5)
+    ss = macro.get("seat_search", {})
+    row_tolerance = ss.get("row_tolerance", 30)
+    gap_tolerance = ss.get("gap_tolerance", 40)
+    max_results_per_zone = ss.get("max_results_per_zone", 20)
 
     logger.info("=" * 50)
     logger.info("  🎫 티켓링크봇 — 독립형 매크로")
@@ -133,7 +140,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 
         found_group = None
         screenshot_fails = 0
-        for attempt in range(30):
+        for attempt in range(max_retries):
             # 중지 신호 확인
             if stop_event and stop_event.is_set():
                 result["message"] = "⏹️ 사용자 중지"
@@ -144,22 +151,22 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             png = SystemBot.screenshot()
             if not png:
                 screenshot_fails += 1
-                logger.warning("  ⚠️ 스크린샷 실패 (%d/5)", screenshot_fails)
-                if screenshot_fails >= 5:
+                logger.warning("  ⚠️ 스크린샷 실패 (%d/%d)", screenshot_fails, max_screenshot_fails)
+                if screenshot_fails >= max_screenshot_fails:
                     logger.error("  ❌ 스크린샷 연속 실패 — 중단")
-                    result["message"] = "스크린샷 연속 실패 (5회)"
+                    result["message"] = f"스크린샷 연속 실패 ({max_screenshot_fails}회)"
                     return result
                 continue
 
             screenshot_fails = 0  # 성공 시 카운터 리셋
 
             if seat_zones:
-                zone_result = find_seats_in_zones(png, seat_zones, max_results_per_zone=20)
+                zone_result = find_seats_in_zones(png, seat_zones, max_results_per_zone=max_results_per_zone)
                 all_seats = zone_result.get("all", [])
                 if consecutive_n > 1:
                     found_group = find_consecutive_seats(
                         all_seats, n=consecutive_n,
-                        row_tolerance=30, gap_tolerance=40,
+                        row_tolerance=row_tolerance, gap_tolerance=gap_tolerance,
                     )
                 else:
                     found_group = [all_seats[0]] if all_seats else []
@@ -167,12 +174,12 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 area = tuple(seat_area) if any(seat_area) else None
                 seats = find_seats_by_color(
                     png, seat_color, tolerance=color_tolerance,
-                    area=area, max_results=20,
+                    area=area, max_results=max_results_per_zone,
                 )
                 if consecutive_n > 1:
                     found_group = find_consecutive_seats(
                         seats, n=consecutive_n,
-                        row_tolerance=30, gap_tolerance=40,
+                        row_tolerance=row_tolerance, gap_tolerance=gap_tolerance,
                     )
                 else:
                     found_group = [seats[0]] if seats else []
@@ -219,7 +226,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 _click(sx, sy, f"좌석선택({i+1})")
                 _wait(seat_click_delay)
         else:
-            result["message"] = f"빈 좌석 없음 ({consecutive_n}연석, 30회)"
+            result["message"] = f"빈 좌석 없음 ({consecutive_n}연석, {max_retries}회)"
             logger.warning("  ⚠️ %s", result["message"])
             return result
     else:

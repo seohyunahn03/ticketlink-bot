@@ -175,6 +175,7 @@ def find_seats_in_zones(
     """
     all_seats = []
     zone_results = []
+    existing = set()  # 중복 제거용 — loop 밖에서 한 번만 생성
 
     for zi, zone in enumerate(zones):
         area = tuple(zone.get("area", [0, 0, 0, 0]))
@@ -190,8 +191,7 @@ def find_seats_in_zones(
         )
         zone_results.append(zone_seats)
 
-        # 중복 제거하며 통합
-        existing = set(all_seats)
+        # 중복 제거하며 통합 (existing은 loop 밖에서 한 번 생성)
         for s in zone_seats:
             if s not in existing:
                 all_seats.append(s)
@@ -254,7 +254,7 @@ def find_consecutive_seats(
                 if len(current_group) >= n:
                     # N연석 발견
                     group = current_group[-n:]  # 가장 최근 N개
-                    if len(group) > len(best_group):
+                    if len(group) >= len(best_group):
                         best_group = group
             else:
                 current_group = [row_seats[i]]

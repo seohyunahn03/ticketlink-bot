@@ -22,8 +22,6 @@ import ssl
 import urllib.request
 from pathlib import Path
 
-from .oauth import get_xai_token, migrate_from_hermes
-
 logger = logging.getLogger(__name__)
 
 # fallback auth 경로들
@@ -219,6 +217,9 @@ def _solve_with_tesseract(image_bytes: bytes) -> tuple[str | None, float]:
 
 def _resolve_xai_token() -> str:
     """xAI API 토큰 자동 탐색 — OAuth → 환경변수 → Hermes → config"""
+    # 0. Lazy import — oauth 의존성 분리
+    from .oauth import get_xai_token, migrate_from_hermes
+
     # 1. OAuth: ticketlink-bot auth.json
     try:
         token = get_xai_token()
@@ -386,6 +387,7 @@ def _solve_parallel(
 
         # 먼저 완료되는 순서대로 처리
         for future in as_completed([tess_fut, vis_fut]):
+            source = "unknown"  # 예외 발생 시에도 source 참조 가능하도록
             try:
                 source, text, conf = future.result(timeout=10)
             except Exception as e:

@@ -1,6 +1,7 @@
 """
 설정 관리 — YAML/환경변수/CLI args
 """
+import copy
 import json
 import os
 from pathlib import Path
@@ -55,6 +56,14 @@ DEFAULT_CONFIG = {
             "section_move": 200,# 구역 이동 딜레이(ms)
             "refresh": 500,     # 새로고침 간격(ms)
         },
+        # ── 매크로 제어값 (하드코딩 대신 설정 가능) ──
+        "max_retries": 30,        # 좌석 검색 최대 재시도 횟수
+        "max_screenshot_fails": 5,# 스크린샷 연속 실패 허용 횟수
+        "seat_search": {
+            "row_tolerance": 30,     # 같은 열 판정 픽셀 오차
+            "gap_tolerance": 40,     # 연속 좌석 간격 픽셀 오차
+            "max_results_per_zone": 20,  # 구역당 최대 좌석 후보
+        },
     },
     # 알림
     "notify": {
@@ -75,7 +84,7 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     설정 파일 로드. 없으면 기본값 사용.
     CLI args로 오버라이드 가능한 값들은 별도 처리.
     """
-    cfg = dict(DEFAULT_CONFIG)  # shallow copy
+    cfg = copy.deepcopy(DEFAULT_CONFIG)  # deep copy — 내부 dict 독립 보장
 
     if path:
         config_path = Path(path)
@@ -110,16 +119,18 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
                 loaded = {}
         _deep_merge(cfg, loaded)
 
-    # 환경변수 오버라이드
-    env_overrides = {
-        "XAI_API_KEY": ("xai", "api_key"),
-        "TICKET_TEAM": ("booking", "team"),
-        "TICKET_COUNT": ("booking", "ticket_count"),
-    }
-    for env_var, keys in env_overrides.items():
+    # 환경변수 오버라이드 — (nesting_keys..., converter) 형식
+    # converter가 None이면 str 그대로 사용
+    env_overrides = [
+        ("XAI_API_KEY", "xai", "api_key", None),
+        ("TICKET_TEAM", "booking", "team", None),
+        ("TICKET_COUNT", "booking", "ticket_count", int),
+    ]
+    for env_var, *keys_and_conv in env_overrides:
         val = os.environ.get(env_var)
         if val:
-            _set_nested(cfg, keys, val)
+            *keys, converter = keys_and_conv
+            _set_nested(cfg, keys, converter(val) if converter else val)
 
     return cfg
 
