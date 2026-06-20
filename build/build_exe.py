@@ -60,6 +60,7 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         "--hidden-import=pyautogui",
         "--hidden-import=pyscreeze",
         # pynput (전체 수집 — 플랫폼별 하위 모듈 누락 방지)
+        "--hidden-import=pynput",
         "--collect-all=pynput",
         "--hidden-import=pynput._util.win32_vkeys",
         # tkinter (PyInstaller가 하위 모듈 누락함 — messagebox, filedialog 등)
