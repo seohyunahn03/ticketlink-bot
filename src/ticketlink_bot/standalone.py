@@ -12,12 +12,14 @@ import asyncio
 import io
 import json
 import logging
+import threading
 import time
 from typing import Optional
 
 from .system_bot import SystemBot
 from .captcha import solve_captcha as _solve_captcha
 from .seats import find_seats_in_zones, find_consecutive_seats, find_seats_by_color
+from .booking import _get_zones
 
 logger = logging.getLogger("ticketlink_bot")
 
@@ -26,12 +28,13 @@ logger = logging.getLogger("ticketlink_bot")
 #  독립형 예매
 # ================================================================
 
-def standalone_book(cfg: dict) -> dict:
+def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     """
     CDP 없이 순수 시스템 매크로로 예매 실행.
 
     Args:
         cfg: 설정 딕셔너리 (load_config 결과)
+        stop_event: 중지 신호 이벤트 (GUI 중지 버튼 대응)
 
     Returns:
         {"success": bool, "stage": str, "message": str}
@@ -118,6 +121,12 @@ def standalone_book(cfg: dict) -> dict:
 
         found_group = None
         for attempt in range(30):
+            # 중지 신호 확인
+            if stop_event and stop_event.is_set():
+                result["message"] = "⏹️ 사용자 중지"
+                logger.warning("  ⏹️ %s", result["message"])
+                return result
+
             # 시스템 전체화면 스크린샷
             png = SystemBot.screenshot()
             if not png:
@@ -244,23 +253,3 @@ def _reload_page():
     """F5 키로 페이지 새로고침"""
     SystemBot.press("f5")
     time.sleep(1)
-
-
-# ================================================================
-#  유틸 (booking.py에서 복사)
-# ================================================================
-
-def _get_zones(macro: dict) -> list[dict]:
-    """하위호환 zone 변환"""
-    zones = macro.get("seat_zones", [])
-    if not zones:
-        area = macro.get("seat_area", [0, 0, 0, 0])
-        color = macro.get("seat_color", "C8C8C8")
-        tol = macro.get("color_tolerance", 20)
-        if any(area):
-            zones = [{"area": area, "color": color, "tolerance": tol}]
-    return zones
-
-
-def _wait(t):
-    time.sleep(t)

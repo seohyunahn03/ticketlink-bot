@@ -139,6 +139,12 @@ class TicketlinkGUI(tk.Tk):
         self._hotkey_listener = None
         self._init_hotkeys()
 
+        # 중지 이벤트 (매크로 강제 중지용)
+        self._stop_event = threading.Event()
+
+        # 상태바 초기화
+        self._toggle_mode()
+
     # ── 메뉴 ──
 
     def _build_menu(self):
@@ -719,6 +725,7 @@ class TicketlinkGUI(tk.Tk):
         """매크로 시작"""
         self._collect_ui_to_cfg()
         self._running = True
+        self._stop_event.clear()
         self._start_btn.configure(state="disabled", text="▶ 실행중...")
         self._stop_btn.configure(state="normal")
         self._status_label.configure(text="🟢 실행중", foreground=_AppStyle.SUCCESS)
@@ -729,6 +736,7 @@ class TicketlinkGUI(tk.Tk):
     def _stop_macro(self):
         """매크로 중지"""
         self._running = False
+        self._stop_event.set()
         self._start_btn.configure(state="normal", text="▶ 시작 (F6)")
         self._stop_btn.configure(state="disabled")
         self._status_label.configure(text="⏸ 중지됨", foreground=_AppStyle.WARN)
@@ -740,7 +748,7 @@ class TicketlinkGUI(tk.Tk):
                 # ── 독립형 모드 (Chrome/CDP 불필요) ──
                 logger.info("🚀 독립형 매크로 시작 (Chrome 불필요)")
                 from .standalone import standalone_book
-                result = standalone_book(self._cfg)
+                result = standalone_book(self._cfg, stop_event=self._stop_event)
             else:
                 # ── CDP 하이브리드 모드 ──
                 loop = asyncio.new_event_loop()
