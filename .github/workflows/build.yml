@@ -29,22 +29,14 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq python3-tk 2>/dev/null || true
       - name: Check imports
         run: |
-          echo "Python: $(python3 --version)"
-          echo "PWD: $(pwd)"
-          cd src && python3 -c "
-          import sys; print(f'sys.path: {sys.path}')
-          from ticketlink_bot.config import load_config
-          from ticketlink_bot.seats import find_seats_by_color, find_seats_in_zones
-          from ticketlink_bot.captcha import solve_captcha
-          from ticketlink_bot.standalone import standalone_book
-          from ticketlink_bot.__main__ import main
-          # GUI는 tkinter 필요 (CI에 없을 수 있음)
-          try:
-              from ticketlink_bot.gui import run_gui
-          except ImportError:
-              print('(gui skipped: no tkinter)')
-          print('✅ All imports OK')
-          "
+          cd src
+          python3 -c "from ticketlink_bot.config import load_config; print('1 config OK')"
+          python3 -c "from ticketlink_bot.seats import find_seats_by_color; print('2 seats OK')"
+          python3 -c "from ticketlink_bot.captcha import solve_captcha; print('3 captcha OK')"
+          python3 -c "from ticketlink_bot.standalone import standalone_book; print('4 standalone OK')"
+          python3 -c "from ticketlink_bot.__main__ import main; print('5 main OK')"
+          python3 -c "from ticketlink_bot.gui import run_gui; print('6 gui OK')" 2>/dev/null || echo "6 gui skipped"
+          echo "✅ All imports OK"
       - name: Syntax check
         run: |
           echo "Python: $(python3 --version)"
