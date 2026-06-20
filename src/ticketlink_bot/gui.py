@@ -699,6 +699,10 @@ class TicketlinkGUI(tk.Tk):
             macro["seat_zones"] = zones
             macro["seat_area"] = zones[0]["area"]
             macro["seat_color"] = zones[0]["color"]
+        else:
+            macro.pop("seat_zones", None)
+            macro.pop("seat_area", None)
+            macro.pop("seat_color", None)
 
         try:
             macro["consecutive_seats"] = int(self._consecutive_var.get())

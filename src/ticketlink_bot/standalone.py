@@ -40,7 +40,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 3)
     seat_click_delay = delays.get("seat_click", 500) / 1000.0
-    refresh_delay = delays.get("refresh", 500) / 1000.0
+    refresh_delay = delays.get("refresh", 2000) / 1000.0
 
     logger.info("=" * 50)
     logger.info("  🎫 티켓링크봇 — 독립형 매크로")
@@ -123,6 +123,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                      consecutive_n, len(seat_zones) if seat_zones else 1)
 
         found_group = None
+        screenshot_fails = 0
         for attempt in range(30):
             # 중지 신호 확인
             if stop_event and stop_event.is_set():
@@ -133,8 +134,12 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             # 시스템 전체화면 스크린샷
             png = SystemBot.screenshot()
             if not png:
-                logger.warning("  ⚠️ 스크린샷 실패")
-                break
+                screenshot_fails += 1
+                logger.warning("  ⚠️ 스크린샷 실패 (%d/5)", screenshot_fails)
+                if screenshot_fails >= 5:
+                    logger.error("  ❌ 스크린샷 연속 실패 — 중단")
+                    break
+                continue
 
             if seat_zones:
                 zone_result = find_seats_in_zones(png, seat_zones, max_results_per_zone=20)
