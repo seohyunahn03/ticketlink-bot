@@ -57,15 +57,13 @@ begin
     MsgBox(
       '🎫 ticketlink-bot 설치 완료!' + #13#10 +
       #13#10 +
-      '📌 필수 추가 설치:' + #13#10 +
-      '  1. Google Chrome (--remote-debugging-port=9222 모드)' + #13#10 +
-      '  2. Tesseract OCR (선택, 캡차 해결용)' + #13#10 +
+      '📌 선택 설치:' + #13#10 +
+      '  1. Tesseract OCR (선택, 캡차 해결용)' + #13#10 +
       '     https://github.com/UB-Mannheim/tesseract/wiki' + #13#10 +
       #13#10 +
       '▶️ 사용법:' + #13#10 +
-      '  ticketlink-bot --pick     (좌표 설정)' + #13#10 +
-      '  ticketlink-bot --setup    (설정 마법사)' + #13#10 +
-      '  ticketlink-bot --full     (전체 자동 예매)',
+      '  ticketlink-bot            (GUI 실행)' + #13#10 +
+      '  ticketlink-bot --standalone (CLI 독립형)',
       mbInformation, MB_OK
     );
   end;

@@ -26,7 +26,7 @@ def find_seats_by_color(
     스크린샷에서 지정된 색상과 일치하는 픽셀을 찾아 좌석 좌표 반환.
 
     Args:
-        screenshot_bytes: CDP Page.captureScreenshot PNG 바이트
+        screenshot_bytes: 시스템 스크린샷 PNG 바이트
         target_bgr_hex: 타겟 색상 (BGR hex, e.g. 'C8C8C8' = 회색)
         tolerance: 색상 오차범위 (0~255, 클수록 넓게 탐색)
         area: 탐색 영역 (x1, y1, x2, y2) — None이면 전체 화면
@@ -161,7 +161,7 @@ def find_seats_in_zones(
     여러 구역(zone)에서 좌석 검색. 통합매크로 방식.
 
     Args:
-        screenshot_bytes: CDP Page.captureScreenshot PNG 바이트
+        screenshot_bytes: 시스템 스크린샷 PNG 바이트
         zones: [
             {"area": [x1,y1,x2,y2], "color": "C8C8C8", "tolerance": 20},
             ...

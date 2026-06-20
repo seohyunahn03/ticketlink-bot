@@ -142,8 +142,8 @@ class TicketlinkGUI(tk.Tk):
         # 중지 이벤트 (매크로 강제 중지용)
         self._stop_event = threading.Event()
 
-        # 상태바 초기화
-        self._toggle_mode()
+        # 상태바 초기화 (항상 독립형)
+        self._statusbar.configure(text=" [F6] 실행/중지  |  [ESC] 종료  |  모드: 독립형")
 
     # ── 메뉴 ──
 
@@ -421,18 +421,7 @@ class TicketlinkGUI(tk.Tk):
 
         ttk.Label(frame, text="").grid(row=len(fields), column=0, pady=8)
 
-        # 사용 모드
-        self._standalone_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            frame, text="✅ 독립형 모드 (Chrome 불필요, pyautogui 시스템 클릭)",
-            variable=self._standalone_var,
-            command=self._toggle_mode,
-        ).grid(row=len(fields) + 1, column=0, columnspan=2, sticky="w", padx=8)
-
-        ttk.Label(
-            frame, text="⚠️ Chrome 없이 모든 화면에서 동작. 좌표는 절대화면 좌표 사용.",
-            font=_AppStyle.FONT_SMALL, foreground=_AppStyle.SUCCESS,
-        ).grid(row=len(fields) + 2, column=0, columnspan=2, sticky="w", padx=16)
+        # 사용 모드 (항상 독립형/시스템 매크로 모드)
 
     # ── 좌표 따기 ──
 
@@ -454,7 +443,7 @@ class TicketlinkGUI(tk.Tk):
             logger.error("❌ 좌표 따기 실패: %s", e)
 
     def _run_picker_sync(self, use_global: bool):
-        """동기식 좌표 따기 실행"""
+        """동기식 좌표 따기 실행 (시스템 글로벌 픽커, Chrome 불필요)"""
         if use_global:
             from .picker import GlobalPicker
             picker = GlobalPicker()
@@ -464,26 +453,7 @@ class TicketlinkGUI(tk.Tk):
                 return loop.run_until_complete(picker.pick(timeout=60))
             finally:
                 picker.close()
-        else:
-            # CDP picker (기존 pick_coordinates)
-            try:
-                from .booking import pick_coordinates
-                from .bot import Bot
-                bot = Bot()
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(bot.connect(auto_launch=True))
-                tab = loop.run_until_complete(bot.find_tab("ticketlink"))
-                if not tab:
-                    tab = loop.run_until_complete(bot.find_tab("야구"))
-                if tab:
-                    loop.run_until_complete(bot.attach(tab["targetId"]))
-                result = loop.run_until_complete(pick_coordinates(bot, click_timeout=60))
-                loop.run_until_complete(bot.close())
-                return result
-            except Exception as e:
-                logger.error("❌ CDP picker 오류: %s", e)
-                return None
+        return None
 
     def _quick_pick(self, x_var, y_var):
         """빠른 좌표 따기 (zone용) — 백그라운드 스레드"""
@@ -729,11 +699,6 @@ class TicketlinkGUI(tk.Tk):
             except ValueError:
                 delays[k] = {"click_wait": 3, "seat_click": 500, "refresh": 2000}.get(k, 0)
 
-    def _toggle_mode(self):
-        """독립형/CDP 모드 전환 시 UI 업데이트"""
-        mode = "독립형" if self._standalone_var.get() else "CDP 하이브리드"
-        self._statusbar.configure(text=f" [F6] 실행/중지  |  [ESC] 종료  |  모드: {mode}")
-
     # ── 매크로 실행 ──
 
     def _start_macro(self):
@@ -745,8 +710,7 @@ class TicketlinkGUI(tk.Tk):
         self._stop_btn.configure(state="normal")
         self._status_label.configure(text="🟢 실행중", foreground=_AppStyle.SUCCESS)
 
-        standalone = self._standalone_var.get()
-        threading.Thread(target=self._run_macro, args=(standalone,), daemon=True).start()
+        threading.Thread(target=self._run_macro, args=(True,), daemon=True).start()
 
     def _stop_macro(self):
         """매크로 중지"""
@@ -759,43 +723,10 @@ class TicketlinkGUI(tk.Tk):
     def _run_macro(self, standalone_mode: bool):
         """별도 스레드에서 매크로 실행"""
         try:
-            if standalone_mode:
-                # ── 독립형 모드 (Chrome/CDP 불필요) ──
-                logger.info("🚀 독립형 매크로 시작 (Chrome 불필요)")
-                from .standalone import standalone_book
-                result = standalone_book(self._cfg, stop_event=self._stop_event)
-            else:
-                # ── CDP 하이브리드 모드 ──
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    from .bot import Bot
-                    bot = Bot()
-                    loop.run_until_complete(bot.connect(auto_launch=True))
-
-                    tab = loop.run_until_complete(bot.find_tab("ticketlink"))
-                    if not tab:
-                        tab = loop.run_until_complete(bot.find_tab("야구"))
-                    if not tab:
-                        default_url = self._cfg.get("booking", {}).get(
-                            "default_url", "https://www.ticketlink.co.kr/sports/137/59"
-                        )
-                        result = loop.run_until_complete(
-                            bot.cmd("Target.createTarget", {"url": default_url})
-                        )
-                        tab = result
-
-                    if tab:
-                        loop.run_until_complete(bot.attach(tab["targetId"]))
-                        logger.info("✅ Chrome 연결 완료")
-
-                    from .booking import full_auto_book
-                    result = loop.run_until_complete(
-                        full_auto_book(bot, self._cfg, use_system_click=True)
-                    )
-                    loop.run_until_complete(bot.close())
-                finally:
-                    loop.close()
+            # ── 독립형 모드 (Chrome/CDP 불필요) ──
+            logger.info("🚀 독립형 매크로 시작 (Chrome 불필요)")
+            from .standalone import standalone_book
+            result = standalone_book(self._cfg, stop_event=self._stop_event)
 
             if result.get("success"):
                 self.after(0, lambda: self._status_label.configure(
@@ -838,17 +769,6 @@ class TicketlinkGUI(tk.Tk):
             self.after(50, lambda: messagebox.showinfo(
                 "좌표", f"📌 ({x}, {y})\n클립보드에 복사됨"))
 
-    def _run_cdp_picker(self):
-        """CDP 좌표 따기 도구"""
-        logger.info("🔍 Chrome 좌표 따기 시작...")
-        threading.Thread(target=self._do_cdp_pick, daemon=True).start()
-
-    def _do_cdp_pick(self):
-        coord = self._run_picker_sync(use_global=False)
-        if coord:
-            self.after(0, lambda: messagebox.showinfo(
-                "좌표", f"📌 ({coord['x']}, {coord['y']})"))
-
     # ── 도움말 ──
 
     def _show_help(self):
@@ -859,7 +779,6 @@ class TicketlinkGUI(tk.Tk):
             "2. 좌석 영역: 빈 좌석의 색상과 검색 영역 설정\n"
             "3. '시작' 버튼 또는 F6 키로 매크로 실행\n\n"
             "🎯 좌표 따기:\n"
-            "  - '따기' 버튼 → Chrome에서 우클릭\n"
             "  - '글로벌' 버튼 → 화면 어디서나 우클릭\n\n"
             "⌨️ 단축키:\n"
             "  F6: 실행/중지 토글\n"
@@ -871,7 +790,7 @@ class TicketlinkGUI(tk.Tk):
             "ℹ️ 버전 정보",
             f"🎫 티켓링크봇 v{__version__}\n\n"
             "KBO 야구 예매 자동화 프로그램\n"
-            "Chrome CDP + 시스템 매크로 하이브리드\n\n"
+            "시스템 매크로 모드 (Chrome 불필요)\n\n"
             "© 2026 ticketlink-bot"
         )
 

@@ -439,7 +439,7 @@ def _solve_with_vision_b64(
     b64_str: str,
     model: str = "grok-4.20-0309-non-reasoning",
 ) -> str:
-    """xAI Vision — **base64 직접 입력** (디코드→재인코드 생략, CDP→xAI 직통)"""
+    """xAI Vision — **base64 직접 입력** (디코드→재인코드 생략, 직통)"""
     token = _resolve_xai_token()
 
     data = json.dumps({
@@ -489,7 +489,7 @@ def solve_captcha_b64(
     model: str = "grok-4.20-0309-non-reasoning",
 ) -> str:
     """
-    **CDP→xAI 직통** 캡차 인식 (base64 직접 입력).
+    **직통** 캡차 인식 (base64 직접 입력).
 
     - Tesseract 먼저 (디코드 필요)
     - 실패 시 Vision에 base64 바로 전송 (디코드→재인코드 0ms!)

@@ -30,9 +30,9 @@ jobs:
           cd src && python -c "
           from ticketlink_bot.config import load_config
           from ticketlink_bot.seats import find_seats_by_color, find_seats_in_zones
-          from ticketlink_bot.bot import Bot, discover_cdp_url, _chrome_launch_help
           from ticketlink_bot.captcha import solve_captcha
-          from ticketlink_bot.booking import full_auto_book, pick_coordinates
+          from ticketlink_bot.standalone import standalone_book
+          from ticketlink_bot.gui import run_gui
           from ticketlink_bot.__main__ import main
           print('✅ All imports OK')
           "
@@ -147,15 +147,15 @@ jobs:
             
             ### Windows
             1. `ticketlink-bot.exe` 다운로드 → 실행
-            2. Chrome을 CDP 모드로 실행 필요
+            2. Chrome 불필요 — 시스템 매크로로 바로 동작
             
             ### macOS
             1. `ticketlink-bot-macos` 다운로드 → 실행 권한 부여
-            2. `chmod +x ticketlink-bot && ./ticketlink-bot --pick`
+            2. `chmod +x ticketlink-bot && ./ticketlink-bot`
             
             ### Linux
             1. `ticketlink-bot-linux` 다운로드 → 실행 권한 부여
-            2. `chmod +x ./ticketlink-bot && ./ticketlink-bot --pick`
+            2. `chmod +x ./ticketlink-bot && ./ticketlink-bot`
           files: release-artifacts/*
           draft: false
           prerelease: false

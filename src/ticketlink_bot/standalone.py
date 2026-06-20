@@ -15,7 +15,16 @@ from typing import Optional
 
 from .system_bot import SystemBot
 from .seats import find_seats_in_zones, find_consecutive_seats, find_seats_by_color
-from .booking import _get_zones
+def _get_zones(macro: dict) -> list[dict]:
+    """하위호환: seat_zones가 없으면 seat_area/seat_color로 zone 생성"""
+    zones = macro.get("seat_zones", [])
+    if not zones:
+        area = macro.get("seat_area", [0, 0, 0, 0])
+        color = macro.get("seat_color", "C8C8C8")
+        tol = macro.get("color_tolerance", 20)
+        if any(area):
+            zones = [{"area": area, "color": color, "tolerance": tol}]
+    return zones
 
 logger = logging.getLogger("ticketlink_bot")
 

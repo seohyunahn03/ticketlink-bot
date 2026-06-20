@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "ticketlink-bot"
 requires-python = ">=3.10"
 dependencies = [
-    "websockets>=12.0",
     "pyyaml>=6.0",
     "Pillow>=10.0",
     "numpy>=1.24",
