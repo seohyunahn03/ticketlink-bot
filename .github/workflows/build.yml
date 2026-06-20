@@ -27,7 +27,10 @@ jobs:
           pip install -r requirements.txt
       - name: Check imports
         run: |
-          cd src && python -c "
+          echo "Python: $(python3 --version)"
+          echo "PWD: $(pwd)"
+          cd src && python3 -c "
+          import sys; print(f'sys.path: {sys.path}')
           from ticketlink_bot.config import load_config
           from ticketlink_bot.seats import find_seats_by_color, find_seats_in_zones
           from ticketlink_bot.captcha import solve_captcha
@@ -37,11 +40,13 @@ jobs:
           try:
               from ticketlink_bot.gui import run_gui
           except ImportError:
-              pass
+              print('(gui skipped: no tkinter)')
           print('✅ All imports OK')
           "
       - name: Syntax check
-        run: python -m py_compile src/ticketlink_bot/*.py
+        run: |
+          echo "Python: $(python3 --version)"
+          python3 -m py_compile src/ticketlink_bot/*.py && echo "✅ Syntax OK"
 
   build-windows:
     name: Build Windows EXE
