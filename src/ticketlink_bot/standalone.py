@@ -141,6 +141,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                     break
                 continue
 
+            screenshot_fails = 0  # 성공 시 카운터 리셋
+
             if seat_zones:
                 zone_result = find_seats_in_zones(png, seat_zones, max_results_per_zone=20)
                 all_seats = zone_result.get("all", [])

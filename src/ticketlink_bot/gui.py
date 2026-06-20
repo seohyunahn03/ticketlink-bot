@@ -407,8 +407,8 @@ class TicketlinkGUI(tk.Tk):
             ("team", "응원 팀:", self._cfg.get("booking", {}).get("team", "LG")),
             ("ticket_count", "매수:", str(self._cfg.get("booking", {}).get("ticket_count", 2))),
             ("click_wait", "클릭 후 대기(초):", "3"),
-            ("seat_click", "좌석 딜레이(ms):", "10"),
-            ("refresh", "새로고침 간격(ms):", "500"),
+            ("seat_click", "좌석 딜레이(ms):", "500"),
+            ("refresh", "새로고침 간격(ms):", "2000"),
         ]
 
         self._settings_vars = {}
@@ -581,7 +581,8 @@ class TicketlinkGUI(tk.Tk):
             if name not in self._presets:
                 self._presets.append(name)
                 self._preset_listbox.insert(tk.END, name)
-                self._load_preset(name)
+                self._current_preset = name
+                self._collect_ui_to_cfg()
                 self._save_preset(name)
 
     def _delete_preset(self):
