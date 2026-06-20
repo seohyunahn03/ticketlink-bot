@@ -16,6 +16,33 @@ logger = logging.getLogger("ticketlink_bot")
 
 TICKETLINK_DOMAIN = "ticketlink.co.kr"
 
+# ── 시스템 매크로 ──
+try:
+    from .system_bot import SystemBot
+    _HAVE_SYSTEM_BOT = True
+except ImportError:
+    _HAVE_SYSTEM_BOT = False
+
+
+async def _click_system(bot: Bot, x: int, y: int, label: str = "", use_system: bool = False) -> None:
+    """
+    CDP 클릭 또는 시스템 클릭.
+
+    use_system=True → pyautogui (팝업 창, 다른 앱에서 동작)
+    use_system=False → CDP Input.dispatchMouseEvent (Chrome 탭 내)
+    """
+    if use_system and _HAVE_SYSTEM_BOT:
+        SystemBot.click(x, y)
+        logger.info("🖱️ %s (%d, %d) [시스템]", label, x, y)
+    else:
+        await bot.cmd("Input.dispatchMouseEvent", {
+            "type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1,
+        })
+        await bot.cmd("Input.dispatchMouseEvent", {
+            "type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1,
+        })
+        logger.info("🖱️ %s (%d, %d) [CDP]", label, x, y)
+
 
 async def _wait_for_url_change(bot: "Bot", old_url: str, timeout: int = 10) -> str:
     """URL이 변경될 때까지 폴링. 변경되면 새 URL 반환, 타임아웃 시 old_url 반환."""
@@ -469,7 +496,7 @@ def _get_zones(macro: dict) -> list[dict]:
     return zones
 
 
-async def full_auto_book(bot: Bot, cfg: dict) -> dict:
+async def full_auto_book(bot: Bot, cfg: dict, use_system_click: bool = False) -> dict:
     """
     전체 자동 예매 파이프라인 (예전 매크로 방식 + 보안문자 자동해결).
 
@@ -494,22 +521,13 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
     logger.info("📄 %s", title)
     logger.info("📍 %s", url)
 
-    async def _click(x, y, label=""):
-        await bot.cmd("Input.dispatchMouseEvent", {
-            "type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1,
-        })
-        await bot.cmd("Input.dispatchMouseEvent", {
-            "type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1,
-        })
-        logger.info("🖱️ %s (%d, %d)", label, x, y)
-
     # ===== 1. 예매하기 클릭 =====
     c1 = macro.get("click1", [0, 0])
     if c1[0] == 0 and c1[1] == 0:
         result["message"] = "❌ 예매하기 좌표(click1) 미설정"
         logger.error(result["message"])
         return result
-    await _click(c1[0], c1[1], "예매하기")
+    await _click_system(bot, c1[0], c1[1], "예매하기", use_system=use_system_click)
     url = await _wait_for_url_change(bot, url, timeout=click_wait + 5)
 
     # ===== 1.2 새 창/팝업 감지 =====
@@ -529,17 +547,17 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
     dc = macro.get("date_click", [0, 0])
     rc = macro.get("round_click", [0, 0])
     if dc[0] != 0 or dc[1] != 0:
-        await _click(dc[0], dc[1], "날짜선택")
+        await _click_system(bot, dc[0], dc[1], "날짜선택", use_system=use_system_click)
         await asyncio.sleep(1)
     if rc[0] != 0 or rc[1] != 0:
-        await _click(rc[0], rc[1], "회차선택")
+        await _click_system(bot, rc[0], rc[1], "회차선택", use_system=use_system_click)
         await asyncio.sleep(1)
 
     # ===== 2. 확인 클릭 =====
     c2 = macro.get("click2", [0, 0])
     if c2[0] != 0 or c2[1] != 0:
         old_url = await bot.get_url()
-        await _click(c2[0], c2[1], "확인")
+        await _click_system(bot, c2[0], c2[1], "확인", use_system=use_system_click)
         url = await _wait_for_url_change(bot, old_url, timeout=click_wait + 5)
 
     # ===== 3. 보안문자 처리 =====
@@ -555,7 +573,7 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
     cs = macro.get("captcha_submit", [0, 0])
     if cs[0] != 0 or cs[1] != 0:
         await asyncio.sleep(0.5)
-        await _click(cs[0], cs[1], "보안문자 확인")
+        await _click_system(bot, cs[0], cs[1], "보안문자 확인", use_system=use_system_click)
         url = await _wait_for_url_change(bot, url, timeout=click_wait + 3)
 
     # ===== 4. 좌석 색상 검색 & 클릭 (다중 구역 지원) =====
@@ -610,19 +628,19 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
             logger.info("  ↻ 빈 좌석 없음, 새로고침 (%d/30)", attempt + 1)
             await bot.cmd("Page.reload", {})
             await asyncio.sleep(refresh_delay)
-            await _click(c1[0], c1[1], "예매하기(재시도)")
+            await _click_system(bot, c1[0], c1[1], "예매하기(재시도)", use_system=use_system_click)
             await asyncio.sleep(click_wait)
             if c2[0] != 0 or c2[1] != 0:
-                await _click(c2[0], c2[1], "확인")
+                await _click_system(bot, c2[0], c2[1], "확인", use_system=use_system_click)
                 await asyncio.sleep(click_wait)
             if cs[0] != 0 or cs[1] != 0:
-                await _click(cs[0], cs[1], "보안문자 확인(재시도)")
+                await _click_system(bot, cs[0], cs[1], "보안문자 확인(재시도)", use_system=use_system_click)
                 await asyncio.sleep(click_wait)
 
         if found_group:
             # 좌석들 순서대로 클릭
             for i, (sx, sy) in enumerate(found_group):
-                await _click(sx, sy, f"좌석선택({i+1})")
+                await _click_system(bot, sx, sy, f"좌석선택({i+1})", use_system=use_system_click)
                 await asyncio.sleep(seat_click_delay)
         else:
             result["message"] = f"빈 좌석을 찾을 수 없음 ({consecutive_n}연석, 30회)"
@@ -633,21 +651,21 @@ async def full_auto_book(bot: Bot, cfg: dict) -> dict:
     sc = macro.get("section_click", [0, 0])
     if sc[0] != 0 or sc[1] != 0:
         await asyncio.sleep(1)
-        await _click(sc[0], sc[1], "구역선택")
+        await _click_system(bot, sc[0], sc[1], "구역선택", use_system=use_system_click)
         await asyncio.sleep(2)
 
     # ===== 5. 선택완료 클릭 =====
     c3 = macro.get("click3", [0, 0])
     if c3[0] != 0 or c3[1] != 0:
         await asyncio.sleep(1)
-        await _click(c3[0], c3[1], "선택완료")
+        await _click_system(bot, c3[0], c3[1], "선택완료", use_system=use_system_click)
         await asyncio.sleep(2)
 
     # ===== 6. 결제하기 클릭 =====
     c4 = macro.get("click4", [0, 0])
     if c4[0] != 0 or c4[1] != 0:
         await asyncio.sleep(1)
-        await _click(c4[0], c4[1], "결제하기")
+        await _click_system(bot, c4[0], c4[1], "결제하기", use_system=use_system_click)
         result["stage"] = "payment"
         result["message"] = "✅ 예매 완료! 결제 페이지로 이동했습니다."
     else:

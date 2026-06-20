@@ -53,6 +53,10 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         "--hidden-import=requests",
         "--hidden-import=requests.utils",
         "--hidden-import=requests.packages.urllib3",
+        "--hidden-import=pyautogui",
+        "--hidden-import=pynput",
+        "--hidden-import=pynput.mouse",
+        "--hidden-import=pynput.keyboard",
 
         # Native DLL 강제 수집 (Windows 크래시 방지)
         "--collect-all=numpy",

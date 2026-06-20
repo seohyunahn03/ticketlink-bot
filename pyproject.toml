@@ -14,6 +14,20 @@ dependencies = [
     "numpy>=1.24",
     "pytesseract>=0.3",
     "requests>=2.31",
+    "pyautogui>=0.9.54",
+]
+[project.optional-dependencies]
+gui = [
+    "pyautogui>=0.9.54",
+    "pynput>=1.7",
+    "pygetwindow>=0.0.9",
+]
+all = [
+    "ticketlink-bot[gui]",
+    "pyobjc-core>=10.0 ; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=10.0 ; sys_platform == 'darwin'",
+    "pywin32>=305 ; sys_platform == 'win32'",
+    "python3-xlib>=0.15 ; sys_platform == 'linux'",
 ]
 
 [project.scripts]
