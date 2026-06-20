@@ -486,26 +486,35 @@ class TicketlinkGUI(tk.Tk):
                 return None
 
     def _quick_pick(self, x_var, y_var):
-        """빠른 좌표 따기 (zone용)"""
+        """빠른 좌표 따기 (zone용) — 백그라운드 스레드"""
+        threading.Thread(target=self._do_quick_pick, args=(x_var, y_var), daemon=True).start()
+
+    def _do_quick_pick(self, x_var, y_var):
         coord = self._run_picker_sync(use_global=True)
         if coord:
-            x_var.set(str(coord["x"]))
-            y_var.set(str(coord["y"]))
+            self.after(0, lambda: x_var.set(str(coord["x"])))
+            self.after(0, lambda: y_var.set(str(coord["y"])))
 
     def _quick_pick_color(self, color_var):
-        """색상 자동 추출"""
+        """색상 자동 추출 — 백그라운드 스레드"""
+        threading.Thread(target=self._do_quick_pick_color, args=(color_var,), daemon=True).start()
+
+    def _do_quick_pick_color(self, color_var):
         coord = self._run_picker_sync(use_global=True)
         if coord:
             try:
                 from .system_bot import SystemBot
                 bgr = SystemBot.pixel(coord["x"], coord["y"])
-                color_var.set(bgr)
+                self.after(0, lambda: color_var.set(bgr))
                 logger.info("  ✅ 색상: #%s", bgr)
             except Exception as e:
                 logger.error("  ⚠️ 색상 추출 실패: %s", e)
 
     def _auto_pick_color(self):
-        """Zone 영역에서 색상 자동 추출 (여러 좌표 평균)"""
+        """Zone 영역에서 색상 자동 추출 — 백그라운드 스레드"""
+        threading.Thread(target=self._do_auto_pick_color, daemon=True).start()
+
+    def _do_auto_pick_color(self):
         logger.info("🎨 빈 좌석(밝은색) 우클릭 → 색상 저장")
         coord = self._run_picker_sync(use_global=True)
         if coord:
@@ -514,7 +523,7 @@ class TicketlinkGUI(tk.Tk):
                 bgr = SystemBot.pixel(coord["x"], coord["y"])
                 # 모든 zone에 적용
                 for zv in self._zone_frames:
-                    zv["color"].set(bgr)
+                    self.after(0, lambda z=zv: z["color"].set(bgr))
                 logger.info("  ✅ 모든 Zone 색상: #%s", bgr)
             except Exception as e:
                 logger.error("  ⚠️ 색상 추출 실패: %s", e)
@@ -816,12 +825,13 @@ class TicketlinkGUI(tk.Tk):
         coord = self._run_picker_sync(use_global=True)
         if coord:
             x, y = coord["x"], coord["y"]
-            self.after(0, lambda: messagebox.showinfo(
-                "좌표", f"📌 ({x}, {y})\n클립보드에 복사됨"))
+            # 먼저 클립보드에 복사 후 메시지 표시
             self.after(0, lambda: (
                 self.clipboard_clear(),
                 self.clipboard_append(f"{x}, {y}"),
             ))
+            self.after(50, lambda: messagebox.showinfo(
+                "좌표", f"📌 ({x}, {y})\n클립보드에 복사됨"))
 
     def _run_cdp_picker(self):
         """CDP 좌표 따기 도구"""
