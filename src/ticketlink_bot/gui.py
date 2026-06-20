@@ -668,8 +668,8 @@ class TicketlinkGUI(tk.Tk):
         self._settings_vars["ticket_count"].set(str(booking.get("ticket_count", 2)))
         delays = macro.get("delays", {})
         self._settings_vars["click_wait"].set(str(delays.get("click_wait", 3)))
-        self._settings_vars["seat_click"].set(str(delays.get("seat_click", 10)))
-        self._settings_vars["refresh"].set(str(delays.get("refresh", 500)))
+        self._settings_vars["seat_click"].set(str(delays.get("seat_click", 500)))
+        self._settings_vars["refresh"].set(str(delays.get("refresh", 2000)))
 
     def _collect_ui_to_cfg(self):
         """UI → 설정"""
@@ -727,7 +727,7 @@ class TicketlinkGUI(tk.Tk):
             try:
                 delays[k] = int(self._settings_vars.get(k, tk.StringVar(value="0")).get())
             except ValueError:
-                delays[k] = {"click_wait": 3, "seat_click": 10, "refresh": 500}.get(k, 0)
+                delays[k] = {"click_wait": 3, "seat_click": 500, "refresh": 2000}.get(k, 0)
 
     def _toggle_mode(self):
         """독립형/CDP 모드 전환 시 UI 업데이트"""
