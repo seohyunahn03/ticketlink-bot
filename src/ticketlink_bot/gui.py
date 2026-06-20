@@ -336,6 +336,8 @@ class TicketlinkGUI(tk.Tk):
         frame.grid_rowconfigure(row, weight=1)
 
         self._zone_frames = []
+        # tolerance var는 _add_zone_ui()보다 먼저 초기화
+        self._tolerance_var = tk.StringVar(value="20")
         self._add_zone_ui()
 
         btn_row = ttk.Frame(frame)
@@ -352,7 +354,6 @@ class TicketlinkGUI(tk.Tk):
 
         row += 1
         ttk.Label(frame, text="색상 오차범위:").grid(row=row, column=0, sticky="w", padx=8)
-        self._tolerance_var = tk.StringVar(value="20")
         ttk.Entry(frame, textvariable=self._tolerance_var, width=6).grid(
             row=row, column=1, sticky="w", padx=4)
 
