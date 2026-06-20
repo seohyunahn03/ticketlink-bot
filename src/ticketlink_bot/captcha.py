@@ -215,9 +215,39 @@ def _solve_with_tesseract(image_bytes: bytes) -> tuple[str | None, float]:
 # xAI Vision API
 # ──────────────────────────────────────────────
 
-def _resolve_xai_token() -> str:
-    """xAI API 토큰 자동 탐색 — OAuth → 환경변수 → Hermes → config"""
-    # 0. Lazy import — oauth 의존성 분리
+def _resolve_xai_token(method: str = "oauth") -> str:
+    """xAI API 토큰 탐색
+
+    Args:
+        method: "oauth" (OAuth PKCE 우선, 실패 시 API 키)
+                "vision" (API 키/환경변수만 사용, OAuth 미시도)
+
+    순서 (oauth): OAuth auth.json → 환경변수 → config.json
+    순서 (vision): 환경변수 → config.json
+    """
+    # ── vision 모드: API 키/환경변수만 ──
+    if method == "vision":
+        # 1. 환경변수
+        env_key = os.environ.get("XAI_API_KEY")
+        if env_key:
+            return env_key
+        # 2. config 딕셔너리나 파일 (직접)
+        config_path = Path.home() / ".config" / "ticketlink-bot" / "config.json"
+        if config_path.exists():
+            try:
+                with open(config_path) as f:
+                    cfg = json.load(f)
+                if cfg.get("xai_api_key"):
+                    return cfg["xai_api_key"]
+            except Exception:
+                pass
+        raise ValueError(
+            "xAI API 키를 찾을 수 없습니다.\n"
+            "  export XAI_API_KEY=your_key_here\n"
+            "  또는 ~/.config/ticketlink-bot/config.json 에 xai_api_key 설정"
+        )
+
+    # ── oauth 모드: OAuth PKCE 우선 ──
     from .oauth import get_xai_token, migrate_from_hermes
 
     # 1. OAuth: ticketlink-bot auth.json
@@ -296,9 +326,10 @@ def _resize_image(image_bytes: bytes, max_size: int = 500) -> bytes:
         return image_bytes
 
 
-def _solve_with_vision(image_bytes: bytes, model: str = "grok-4.20-0309-non-reasoning") -> str:
+def _solve_with_vision(image_bytes: bytes, model: str = "grok-4.20-0309-non-reasoning",
+                       method: str = "oauth") -> str:
     """xAI Grok Vision으로 캡차 이미지 문자열 인식"""
-    token = _resolve_xai_token()
+    token = _resolve_xai_token(method=method)
     image_bytes = _resize_image(image_bytes)
     img_b64 = base64.b64encode(image_bytes).decode()
 
@@ -356,6 +387,7 @@ def _solve_with_vision(image_bytes: bytes, model: str = "grok-4.20-0309-non-reas
 def _solve_parallel(
     image_bytes: bytes,
     model: str = "grok-4.20-0309-non-reasoning",
+    method: str = "oauth",
 ) -> str:
     """
     Tesseract + Vision **동시 실행**, 먼저 성공한 결과 반환.
@@ -378,7 +410,7 @@ def _solve_parallel(
         return ("tess", text, conf)
 
     def vis_worker():
-        text = _solve_with_vision(image_bytes, model=vision_model)
+        text = _solve_with_vision(image_bytes, model=vision_model, method=method)
         return ("vis", text, 100.0)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -410,6 +442,7 @@ def solve_captcha(
     model: str = "grok-4.20-0309-non-reasoning",
     force_tesseract: bool = False,
     force_vision: bool = False,
+    method: str = "oauth",
 ) -> str:
     """
     캡차 이미지 문자열 인식 — **병렬 하이브리드** 자동 폴백.
@@ -422,7 +455,7 @@ def solve_captcha(
     Worst case: 0.5초 (Vision 폴백)
     """
     if force_vision:
-        text = _solve_with_vision(image_bytes, model=model)
+        text = _solve_with_vision(image_bytes, model=model, method=method)
         if text:
             return text
         raise ValueError("Vision 전용 모드에서 인식 실패")
@@ -434,15 +467,16 @@ def solve_captcha(
         raise ValueError("Tesseract 전용 모드에서 인식 실패")
 
     # 병렬 실행
-    return _solve_parallel(image_bytes, model=model)
+    return _solve_parallel(image_bytes, model=model, method=method)
 
 
 def _solve_with_vision_b64(
     b64_str: str,
     model: str = "grok-4.20-0309-non-reasoning",
+    method: str = "oauth",
 ) -> str:
     """xAI Vision — **base64 직접 입력** (디코드→재인코드 생략, 직통)"""
-    token = _resolve_xai_token()
+    token = _resolve_xai_token(method=method)
 
     data = json.dumps({
         "model": model,
@@ -489,6 +523,7 @@ def _solve_with_vision_b64(
 def solve_captcha_b64(
     b64_str: str,
     model: str = "grok-4.20-0309-non-reasoning",
+    method: str = "oauth",
 ) -> str:
     """
     **직통** 캡차 인식 (base64 직접 입력).
@@ -507,4 +542,4 @@ def solve_captcha_b64(
         return text
 
     # Vision (b64 직행)
-    return _solve_with_vision_b64(b64_str, model=model)
+    return _solve_with_vision_b64(b64_str, model=model, method=method)

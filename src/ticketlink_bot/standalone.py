@@ -102,6 +102,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 
     # ===== 3. 캡차 처리 (시스템 스크린샷) =====
     auto_captcha = cfg.get("booking", {}).get("auto_captcha", True)
+    xai_cfg = cfg.get("xai", {})
+    captcha_method = xai_cfg.get("api_type", "oauth")
     solved = False
     if auto_captcha:
         # 중지 신호 확인
@@ -112,7 +114,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 
         logger.info("  🔍 캡차 처리 중...")
         try:
-            solved = _standalone_captcha(stop_event=stop_event)
+            solved = _standalone_captcha(stop_event=stop_event, method=captcha_method)
             if solved:
                 logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
                 _wait(1)
@@ -206,7 +208,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             retry_solved = False
             if auto_captcha:
                 try:
-                    retry_solved = _standalone_captcha(stop_event=stop_event)
+                    retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method)
                 except Exception as e:
                     logger.error("  ❌ 재시도 캡차 오류: %s", e)
             if retry_solved and (cs[0] != 0 or cs[1] != 0):
@@ -281,7 +283,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 #  캡차 (시스템 스크린샷 기반)
 # ================================================================
 
-def _standalone_captcha(stop_event: Optional[threading.Event] = None) -> bool:
+def _standalone_captcha(stop_event: Optional[threading.Event] = None,
+                        method: str = "oauth") -> bool:
     """
     시스템 스크린샷으로 캡차 해결.
     Chrome CDP 없이 pyautogui 전체화면 스크린샷 사용.
@@ -305,7 +308,7 @@ def _standalone_captcha(stop_event: Optional[threading.Event] = None) -> bool:
 
     # 3. 캡차 인식
     logger.info("  🤖 캡차 인식 중...")
-    captcha_text = _solve_b64(b64)
+    captcha_text = _solve_b64(b64, method=method)
     logger.info("  ✅ 인식: \"%s\"", captcha_text)
 
     # OCR 결과 검증 (빈 문자열이나 짧은 값이면 실패 처리)

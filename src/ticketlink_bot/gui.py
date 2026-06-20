@@ -428,8 +428,8 @@ class TicketlinkGUI(tk.Tk):
 
         # ── 캡차 설정 ──
         row += 1
-        ttk.Label(frame, text="🤖 캡차 (xAI Grok Vision)", font=("", 10, "bold")).grid(
-            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
+        lbl = ttk.Label(frame, text="🤖 캡차 (xAI Grok Vision)", font=("", 10, "bold"))
+        lbl.grid(row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
         row += 1
 
         # auto_captcha 체크박스
@@ -438,6 +438,20 @@ class TicketlinkGUI(tk.Tk):
         ttk.Checkbutton(frame, text="자동 캡차 해제 사용",
                         variable=self._auto_captcha_var).grid(
             row=row, column=0, columnspan=2, sticky="w", padx=8, pady=2)
+        row += 1
+
+        # xai_api_type 선택 (vision | oauth)
+        ttk.Label(frame, text="xAI 인증 방식:").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        api_types = ["oauth", "vision"]
+        self._xai_api_type_var = tk.StringVar(
+            value=self._cfg.get("xai", {}).get("api_type", "oauth"))
+        api_type_combo = ttk.Combobox(frame, textvariable=self._xai_api_type_var,
+                                      values=api_types, width=10, state="readonly")
+        api_type_combo.grid(row=row, column=1, sticky="w", padx=4, pady=2)
+        ttk.Label(frame, text="oauth=PKCE 인증 (추천) / vision=API 키 직접",
+                  font=("", 8), foreground="gray").grid(
+            row=row, column=2, sticky="w", padx=4, pady=2)
         row += 1
 
         # xai_api_key (선택, 감춰진 입력)
@@ -465,9 +479,44 @@ class TicketlinkGUI(tk.Tk):
         model_combo.grid(row=row, column=1, sticky="w", padx=4, pady=2)
         row += 1
 
-        ttk.Label(frame, text="(공란 시 OAuth 인증 또는 환경변수 XAI_API_KEY 사용)",
+        # OAuth 로그인 버튼
+        ttk.Button(frame, text="🔐 xAI OAuth 로그인 (브라우저)",
+                   command=self._start_xai_oauth).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=6)
+        ttk.Label(frame, text="OAuth 인증이 필요하면 버튼을 눌러 브라우저에서 xAI 로그인하세요.",
                   font=("", 8), foreground="gray").grid(
-            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
+            row=row, column=2, sticky="w", padx=4)
+        row += 1
+
+        ttk.Label(frame, text="vision 모드: XAI_API_KEY 환경변수 또는 위 API 키 필드 사용",
+                  font=("", 8), foreground="gray").grid(
+            row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
+
+    # ── xAI OAuth 로그인 ──
+
+    def _start_xai_oauth(self):
+        """xAI OAuth PKCE 로그인 (별도 스레드)"""
+        threading.Thread(target=self._do_xai_oauth, daemon=True).start()
+
+    def _do_xai_oauth(self):
+        """백그라운드에서 xAI OAuth 로그인 실행"""
+        try:
+            from .oauth import xai_oauth_login
+            logger.info("🔐 xAI OAuth 로그인 시작... (브라우저가 열립니다)")
+            tokens = xai_oauth_login(timeout_seconds=120.0, open_browser=True)
+            if tokens and tokens.get("access_token"):
+                logger.info("✅ xAI OAuth 로그인 완료! (%d자 토큰)",
+                            len(tokens["access_token"]))
+                # 자동으로 api_type = oauth 로 전환
+                self.after(0, lambda: self._xai_api_type_var.set("oauth"))
+                # cfg에도 반영
+                self.after(0, self._save_preset, self._current_preset)
+            else:
+                logger.error("❌ xAI OAuth 로그인 실패 — 토큰을 받지 못했습니다.")
+        except Exception as e:
+            logger.error("❌ xAI OAuth 로그인 오류: %s", e)
+            import traceback
+            traceback.print_exc()
 
     # ── 좌표 따기 ──
 
@@ -688,6 +737,7 @@ class TicketlinkGUI(tk.Tk):
 
         # xAI / captcha — cfg → UI 읽기
         xai_cfg = self._cfg.get("xai", {})
+        self._xai_api_type_var.set(xai_cfg.get("api_type", "oauth"))
         self._xai_api_key_var.set(xai_cfg.get("api_key", ""))
         self._xai_model_var.set(xai_cfg.get("model", "grok-4.20-0309-non-reasoning"))
         self._auto_captcha_var.set(
@@ -755,6 +805,7 @@ class TicketlinkGUI(tk.Tk):
 
         # xAI / captcha — UI → cfg 저장
         xai_cfg = self._cfg.setdefault("xai", {})
+        xai_cfg["api_type"] = self._xai_api_type_var.get()
         xai_cfg["api_key"] = self._xai_api_key_var.get()
         xai_cfg["model"] = self._xai_model_var.get()
         booking["auto_captcha"] = self._auto_captcha_var.get()

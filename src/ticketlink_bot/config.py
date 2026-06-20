@@ -25,8 +25,10 @@ DEFAULT_CONFIG = {
         "auto_captcha": True,
         "default_url": "https://www.ticketlink.co.kr/sports/137/59",
     },
-    # xAI Vision (캡차)
+    # xAI (캡차)
     "xai": {
+        "api_type": "oauth",  # "vision" | "oauth"
+        "api_key": "",         # 직접 API 키 (선택사항)
         "model": "grok-4.20-0309-non-reasoning",
     },
     # ===== 매크로 좌표 설정 =====
@@ -123,6 +125,7 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     # converter가 None이면 str 그대로 사용
     env_overrides = [
         ("XAI_API_KEY", "xai", "api_key", None),
+        ("XAI_API_TYPE", "xai", "api_type", None),
         ("TICKET_TEAM", "booking", "team", None),
         ("TICKET_COUNT", "booking", "ticket_count", int),
     ]
