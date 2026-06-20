@@ -60,10 +60,16 @@ def main() -> None:
     try:
         from .gui import run_gui
         run_gui()
+        # EXE(--onefile)로 실행 시 종료 전 대기 (터미널 바로 꺼짐 방지)
+        if getattr(sys, "frozen", False):
+            print()
+            input("   엔터를 누르면 종료합니다...")
     except ImportError as e:
         print(f"❌ GUI 실행 불가: {e}")
         print("   tkinter가 설치되어 있는지 확인하세요.")
         print("   CLI 모드: python -m ticketlink_bot --standalone")
+        print()
+        input("   엔터를 누르면 종료합니다...")
         sys.exit(1)
 
 

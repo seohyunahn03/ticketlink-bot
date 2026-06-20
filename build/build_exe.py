@@ -65,6 +65,9 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         "--hidden-import=pynput._util",
         "--hidden-import=pynput._util.win32",
         "--hidden-import=pynput.keyboard._win32",
+        # tkinter (PyInstaller 자동 탐지하지만 명시적으로 추가)
+        "--hidden-import=tkinter",
+        "--hidden-import=_tkinter",
         "--hidden-import=pynput.mouse._win32",
 
         # Native DLL 강제 수집 (Windows 크래시 방지)
