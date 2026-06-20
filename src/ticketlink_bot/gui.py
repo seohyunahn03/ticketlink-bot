@@ -815,10 +815,13 @@ class TicketlinkGUI(tk.Tk):
     def _do_global_pick(self):
         coord = self._run_picker_sync(use_global=True)
         if coord:
+            x, y = coord["x"], coord["y"]
             self.after(0, lambda: messagebox.showinfo(
-                "좌표", f"📌 ({coord['x']}, {coord['y']})\n클립보드에 복사됨"))
-            self.clipboard_clear()
-            self.clipboard_append(f"{coord['x']}, {coord['y']}")
+                "좌표", f"📌 ({x}, {y})\n클립보드에 복사됨"))
+            self.after(0, lambda: (
+                self.clipboard_clear(),
+                self.clipboard_append(f"{x}, {y}"),
+            ))
 
     def _run_cdp_picker(self):
         """CDP 좌표 따기 도구"""
