@@ -147,7 +147,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 logger.warning("  ⚠️ 스크린샷 실패 (%d/5)", screenshot_fails)
                 if screenshot_fails >= 5:
                     logger.error("  ❌ 스크린샷 연속 실패 — 중단")
-                    break
+                    result["message"] = "스크린샷 연속 실패 (5회)"
+                    return result
                 continue
 
             screenshot_fails = 0  # 성공 시 카운터 리셋
@@ -155,10 +156,13 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             if seat_zones:
                 zone_result = find_seats_in_zones(png, seat_zones, max_results_per_zone=20)
                 all_seats = zone_result.get("all", [])
-                found_group = find_consecutive_seats(
-                    all_seats, n=consecutive_n,
-                    row_tolerance=30, gap_tolerance=40,
-                )
+                if consecutive_n > 1:
+                    found_group = find_consecutive_seats(
+                        all_seats, n=consecutive_n,
+                        row_tolerance=30, gap_tolerance=40,
+                    )
+                else:
+                    found_group = [all_seats[0]] if all_seats else []
             else:
                 area = tuple(seat_area) if any(seat_area) else None
                 seats = find_seats_by_color(

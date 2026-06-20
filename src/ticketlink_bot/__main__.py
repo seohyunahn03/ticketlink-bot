@@ -29,7 +29,6 @@ def main() -> None:
     )
 
     p.add_argument("--standalone", action="store_true", help="CLI 독립형 매크로 (Chrome 불필요)")
-    p.add_argument("--gui", action="store_true", help="GUI 모드 (기본값)")
     p.add_argument("--config", type=str, default=None, help="설정 파일 경로")
     p.add_argument("--verbose", action="store_true", help="디버그 로그 출력")
     p.add_argument("--version", action="store_true", help="버전 정보")

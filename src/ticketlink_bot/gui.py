@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from . import __version__
-from .config import load_config, save_config, DEFAULT_CONFIG_PATH
+from .config import load_config, save_config
 
 logger = logging.getLogger("ticketlink_bot")
 
@@ -391,7 +391,7 @@ class TicketlinkGUI(tk.Tk):
                    command=lambda: self._quick_pick_color(vars["color"])).grid(row=2, column=3, padx=2)
 
         ttk.Button(frame, text="❌", width=3,
-                   command=lambda: (frame.destroy(), self._zone_frames.remove(vars))).grid(
+                   command=lambda v=vars, f=frame: (f.destroy(), self._zone_frames.remove(v) if v in self._zone_frames else None)).grid(
                        row=0, column=4, rowspan=3, padx=8)
 
         self._zone_frames.append(vars)
@@ -695,8 +695,8 @@ class TicketlinkGUI(tk.Tk):
         delays = macro.setdefault("delays", {})
         for k in ("click_wait", "seat_click", "refresh"):
             try:
-                delays[k] = int(self._settings_vars.get(k, tk.StringVar(value="0")).get())
-            except ValueError:
+                delays[k] = int(self._settings_vars[k].get())
+            except (ValueError, KeyError):
                 delays[k] = {"click_wait": 3, "seat_click": 500, "refresh": 2000}.get(k, 0)
 
     # ── 매크로 실행 ──
@@ -710,7 +710,7 @@ class TicketlinkGUI(tk.Tk):
         self._stop_btn.configure(state="normal")
         self._status_label.configure(text="🟢 실행중", foreground=_AppStyle.SUCCESS)
 
-        threading.Thread(target=self._run_macro, args=(True,), daemon=True).start()
+        threading.Thread(target=self._run_macro, daemon=True).start()
 
     def _stop_macro(self):
         """매크로 중지"""
@@ -720,7 +720,7 @@ class TicketlinkGUI(tk.Tk):
         self._stop_btn.configure(state="disabled")
         self._status_label.configure(text="⏸ 중지됨", foreground=_AppStyle.WARN)
 
-    def _run_macro(self, standalone_mode: bool):
+    def _run_macro(self):
         """별도 스레드에서 매크로 실행"""
         try:
             # ── 독립형 모드 (Chrome/CDP 불필요) ──
