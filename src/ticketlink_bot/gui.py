@@ -5,7 +5,6 @@ tkinter + ttk 기반 데스크탑 애플리케이션.
 프리셋 관리, 좌표 편집, 좌석 영역 설정, 로그 출력, 시작/중지.
 """
 import asyncio
-import json
 import logging
 import os
 import sys
@@ -442,18 +441,17 @@ class TicketlinkGUI(tk.Tk):
         except Exception as e:
             logger.error("❌ 좌표 따기 실패: %s", e)
 
-    def _run_picker_sync(self, use_global: bool):
+    def _run_picker_sync(self, use_global: bool = True):
         """동기식 좌표 따기 실행 (시스템 글로벌 픽커, Chrome 불필요)"""
-        if use_global:
-            from .picker import GlobalPicker
-            picker = GlobalPicker()
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                return loop.run_until_complete(picker.pick(timeout=60))
-            finally:
-                picker.close()
-        return None
+        from .picker import GlobalPicker
+        picker = GlobalPicker()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(picker.pick(timeout=60))
+        finally:
+            picker.close()
+            loop.close()
 
     def _quick_pick(self, x_var, y_var):
         """빠른 좌표 따기 (zone용) — 백그라운드 스레드"""
@@ -491,8 +489,8 @@ class TicketlinkGUI(tk.Tk):
             try:
                 from .system_bot import SystemBot
                 bgr = SystemBot.pixel(coord["x"], coord["y"])
-                # 모든 zone에 적용
-                for zv in self._zone_frames:
+                # 모든 zone에 적용 (복사본으로 순회 — thread-safe)
+                for zv in list(self._zone_frames):
                     self.after(0, lambda z=zv: z["color"].set(bgr))
                 logger.info("  ✅ 모든 Zone 색상: #%s", bgr)
             except Exception as e:

@@ -203,11 +203,19 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 except Exception as e:
                     logger.error("  ❌ 재시도 캡차 오류: %s", e)
             if retry_solved and (cs[0] != 0 or cs[1] != 0):
+                if stop_event and stop_event.is_set():
+                    result["message"] = "⏹️ 사용자 중지 (캡차 재시도)"
+                    logger.warning("  ⏹️ %s", result["message"])
+                    return result
                 _click(cs[0], cs[1], "보안문자 확인(재시도)")
                 _wait(click_wait)
 
         if found_group:
             for i, (sx, sy) in enumerate(found_group):
+                if stop_event and stop_event.is_set():
+                    result["message"] = "⏹️ 사용자 중지 (좌석 선택 중)"
+                    logger.warning("  ⏹️ %s", result["message"])
+                    return result
                 _click(sx, sy, f"좌석선택({i+1})")
                 _wait(seat_click_delay)
         else:
