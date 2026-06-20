@@ -86,6 +86,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 
     # ===== 3. 캡차 처리 (시스템 스크린샷) =====
     auto_captcha = cfg.get("booking", {}).get("auto_captcha", True)
+    solved = False
     if auto_captcha:
         # 중지 신호 확인
         if stop_event and stop_event.is_set():
@@ -104,9 +105,9 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         except Exception as e:
             logger.error("  ❌ 캡차 오류: %s", e)
 
-    # ===== 3.5 캡차 확인 버튼 =====
+    # ===== 3.5 캡차 확인 버튼 (캡차 성공 시에만) =====
     cs = macro.get("captcha_submit", [0, 0])
-    if cs[0] != 0 or cs[1] != 0:
+    if solved and (cs[0] != 0 or cs[1] != 0):
         _click(cs[0], cs[1], "보안문자 확인")
         _wait(click_wait)
 
@@ -165,10 +166,23 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             _reload_page(refresh_delay)  # F5 키
             _click(c1[0], c1[1], "예매하기(재시도)")
             _wait(click_wait)
+            if dc[0] != 0 or dc[1] != 0:
+                _click(dc[0], dc[1], "날짜선택(재시도)")
+                _wait(1)
+            if rc[0] != 0 or rc[1] != 0:
+                _click(rc[0], rc[1], "회차선택(재시도)")
+                _wait(1)
             if c2[0] != 0 or c2[1] != 0:
                 _click(c2[0], c2[1], "확인")
                 _wait(click_wait)
-            if cs[0] != 0 or cs[1] != 0:
+            # 캡차 재해결 (새로고침 후 새 캡차 챌린지)
+            retry_solved = False
+            if auto_captcha:
+                try:
+                    retry_solved = _standalone_captcha(stop_event=stop_event)
+                except Exception as e:
+                    logger.error("  ❌ 재시도 캡차 오류: %s", e)
+            if retry_solved and (cs[0] != 0 or cs[1] != 0):
                 _click(cs[0], cs[1], "보안문자 확인(재시도)")
                 _wait(click_wait)
 
