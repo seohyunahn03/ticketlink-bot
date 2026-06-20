@@ -135,6 +135,10 @@ class TicketlinkGUI(tk.Tk):
         # 종료 처리
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        # 글로벌 핫키 (pynput)
+        self._hotkey_listener = None
+        self._init_hotkeys()
+
     # ── 메뉴 ──
 
     def _build_menu(self):
@@ -152,8 +156,7 @@ class TicketlinkGUI(tk.Tk):
 
         tool_menu = tk.Menu(menubar, tearoff=0, bg=_AppStyle.SURFACE, fg=_AppStyle.FG,
                             activebackground=_AppStyle.ACCENT, activeforeground="#000")
-        tool_menu.add_command(label="좌표 따기 (글로벌)", command=self._run_global_picker)
-        tool_menu.add_command(label="좌표 따기 (Chrome)", command=self._run_cdp_picker)
+        tool_menu.add_command(label="🎯 좌표 따기 (글로벌)", command=self._run_global_picker)
         menubar.add_cascade(label="도구", menu=tool_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0, bg=_AppStyle.SURFACE, fg=_AppStyle.FG,
@@ -412,15 +415,16 @@ class TicketlinkGUI(tk.Tk):
         ttk.Label(frame, text="").grid(row=len(fields), column=0, pady=8)
 
         # 사용 모드
-        self._use_system_var = tk.BooleanVar(value=True)
+        self._standalone_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
-            frame, text="시스템 매크로 사용 (CDP 대신 pyautogui)",
-            variable=self._use_system_var,
+            frame, text="✅ 독립형 모드 (Chrome 불필요, pyautogui 시스템 클릭)",
+            variable=self._standalone_var,
+            command=self._toggle_mode,
         ).grid(row=len(fields) + 1, column=0, columnspan=2, sticky="w", padx=8)
 
         ttk.Label(
-            frame, text="⚠️ 시스템 매크로: 모든 창에서 동작, 권한 필요",
-            font=_AppStyle.FONT_SMALL, foreground=_AppStyle.WARN,
+            frame, text="⚠️ Chrome 없이 모든 화면에서 동작. 좌표는 절대화면 좌표 사용.",
+            font=_AppStyle.FONT_SMALL, foreground=_AppStyle.SUCCESS,
         ).grid(row=len(fields) + 2, column=0, columnspan=2, sticky="w", padx=16)
 
     # ── 좌표 따기 ──
@@ -704,6 +708,11 @@ class TicketlinkGUI(tk.Tk):
             except ValueError:
                 delays[k] = {"click_wait": 3, "seat_click": 10, "refresh": 500}.get(k, 0)
 
+    def _toggle_mode(self):
+        """독립형/CDP 모드 전환 시 UI 업데이트"""
+        mode = "독립형" if self._standalone_var.get() else "CDP 하이브리드"
+        self._statusbar.configure(text=f" [F6] 실행/중지  |  [ESC] 종료  |  모드: {mode}")
+
     # ── 매크로 실행 ──
 
     def _start_macro(self):
@@ -714,8 +723,8 @@ class TicketlinkGUI(tk.Tk):
         self._stop_btn.configure(state="normal")
         self._status_label.configure(text="🟢 실행중", foreground=_AppStyle.SUCCESS)
 
-        use_system = self._use_system_var.get()
-        threading.Thread(target=self._run_macro, args=(use_system,), daemon=True).start()
+        standalone = self._standalone_var.get()
+        threading.Thread(target=self._run_macro, args=(standalone,), daemon=True).start()
 
     def _stop_macro(self):
         """매크로 중지"""
@@ -724,35 +733,46 @@ class TicketlinkGUI(tk.Tk):
         self._stop_btn.configure(state="disabled")
         self._status_label.configure(text="⏸ 중지됨", foreground=_AppStyle.WARN)
 
-    def _run_macro(self, use_system: bool):
+    def _run_macro(self, standalone_mode: bool):
         """별도 스레드에서 매크로 실행"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            from .bot import Bot
-            bot = Bot()
-            loop.run_until_complete(bot.connect(auto_launch=True))
+            if standalone_mode:
+                # ── 독립형 모드 (Chrome/CDP 불필요) ──
+                logger.info("🚀 독립형 매크로 시작 (Chrome 불필요)")
+                from .standalone import standalone_book
+                result = standalone_book(self._cfg)
+            else:
+                # ── CDP 하이브리드 모드 ──
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    from .bot import Bot
+                    bot = Bot()
+                    loop.run_until_complete(bot.connect(auto_launch=True))
 
-            tab = loop.run_until_complete(bot.find_tab("ticketlink"))
-            if not tab:
-                tab = loop.run_until_complete(bot.find_tab("야구"))
-            if not tab:
-                default_url = self._cfg.get("booking", {}).get(
-                    "default_url", "https://www.ticketlink.co.kr/sports/137/59"
-                )
-                result = loop.run_until_complete(
-                    bot.cmd("Target.createTarget", {"url": default_url})
-                )
-                tab = result
+                    tab = loop.run_until_complete(bot.find_tab("ticketlink"))
+                    if not tab:
+                        tab = loop.run_until_complete(bot.find_tab("야구"))
+                    if not tab:
+                        default_url = self._cfg.get("booking", {}).get(
+                            "default_url", "https://www.ticketlink.co.kr/sports/137/59"
+                        )
+                        result = loop.run_until_complete(
+                            bot.cmd("Target.createTarget", {"url": default_url})
+                        )
+                        tab = result
 
-            if tab:
-                loop.run_until_complete(bot.attach(tab["targetId"]))
-                logger.info("✅ Chrome 연결 완료")
+                    if tab:
+                        loop.run_until_complete(bot.attach(tab["targetId"]))
+                        logger.info("✅ Chrome 연결 완료")
 
-            from .booking import full_auto_book
-            result = loop.run_until_complete(
-                full_auto_book(bot, self._cfg, use_system_click=use_system)
-            )
+                    from .booking import full_auto_book
+                    result = loop.run_until_complete(
+                        full_auto_book(bot, self._cfg, use_system_click=True)
+                    )
+                    loop.run_until_complete(bot.close())
+                finally:
+                    loop.close()
 
             if result.get("success"):
                 self.after(0, lambda: self._status_label.configure(
@@ -762,10 +782,10 @@ class TicketlinkGUI(tk.Tk):
                 self.after(0, lambda: self._status_label.configure(
                     text="⚠️ 실패", foreground=_AppStyle.ERROR))
                 logger.warning("⚠️ %s", result.get("message", ""))
-
-            loop.run_until_complete(bot.close())
         except Exception as e:
             logger.error("❌ 매크로 오류: %s", e)
+            import traceback
+            traceback.print_exc()
         finally:
             self.after(0, self._stop_macro)
 
@@ -820,6 +840,36 @@ class TicketlinkGUI(tk.Tk):
             "Chrome CDP + 시스템 매크로 하이브리드\n\n"
             "© 2026 ticketlink-bot"
         )
+
+    # ── 글로벌 핫키 ──
+
+    def _init_hotkeys(self):
+        """pynput 글로벌 키보드 리스너 (F6/ESC)"""
+        try:
+            from pynput import keyboard as _kb
+            def _on_press(key):
+                try:
+                    if key == _kb.Key.f6:
+                        self.after(0, self._toggle_start_stop)
+                    elif key == _kb.Key.esc:
+                        self.after(0, self._on_close)
+                except Exception:
+                    pass
+            self._hotkey_listener = _kb.Listener(on_press=_on_press)
+            self._hotkey_listener.daemon = True
+            self._hotkey_listener.start()
+            logger.info("⌨️ 글로벌 핫키: F6=시작/중지, ESC=종료")
+        except ImportError:
+            logger.info("  pynput 미설치 — 글로벌 핫키 미지원")
+        except Exception as e:
+            logger.debug("  핫키 초기화 실패: %s", e)
+
+    def _toggle_start_stop(self):
+        """F6 핫키: 실행중이면 중지, 중지면 시작"""
+        if self._running:
+            self._stop_macro()
+        else:
+            self._start_macro()
 
     # ── 종료 ──
 

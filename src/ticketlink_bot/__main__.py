@@ -954,7 +954,8 @@ def main() -> None:
     p.add_argument("--url", help="시작 페이지 URL")
     p.add_argument("--config", help="설정 파일 경로")
     p.add_argument("--no-captcha", action="store_true", help="캡차 자동 입력 비활성화")
-    p.add_argument("--gui", action="store_true", help="GUI 모드 실행")
+    p.add_argument("--gui", action="store_true", help="GUI 모드 실행 (기본)")
+    p.add_argument("--standalone", action="store_true", help="CLI 독립형 모드 (Chrome 불필요)")
     p.add_argument("-v", "--verbose", action="store_true", help="상세 로그")
     p.add_argument("--version", action="store_true", help="버전 정보")
 
@@ -965,8 +966,26 @@ def main() -> None:
         print(f"ticketlink-bot v{__version__}")
         return
 
-    # --gui 플래그 → GUI 모드
-    if args.gui:
+    # --standalone → CLI 독립형 모드
+    if args.standalone:
+        _setup_logging(args.verbose)
+        from .standalone import standalone_book
+        cfg = load_config(args.config)
+        print("🎫 티켓링크봇 — 독립형 모드 (Chrome 불필요)")
+        print("=" * 50)
+        result = standalone_book(cfg)
+        print()
+        if result["success"]:
+            print(f"✅ {result['message']}")
+        else:
+            print(f"⚠️ {result['message']}")
+        return
+
+    # --gui → GUI 모드 (또는 플래그 없으면 기본 GUI)
+    if args.gui or not any([
+        args.auto, args.full, args.pick, args.setup,
+        args.watch, args.click, args.version,
+    ]):
         try:
             from .gui import run_gui
             run_gui()
@@ -975,7 +994,7 @@ def main() -> None:
             print("   tkinter가 설치되어 있는지 확인하세요.")
         return
 
-    # 플래그가 하나도 없으면 → 대화형 메뉴 표시
+    # 플래그가 하나도 없으면 → 대화형 메뉴 표시 (GUI fallback)
     has_action = any([args.auto, args.full, args.pick, args.setup, args.watch, args.click])
     if not has_action:
         asyncio.run(_interactive_menu())
