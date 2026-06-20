@@ -13,7 +13,7 @@ try:
     pyautogui.FAILSAFE = True       # 모서리에서 강제 중지
     pyautogui.PAUSE = 0.02          # 클릭 사이 최소 간격
     _HAVE_PYAUTOGUI = True
-except ImportError:
+except Exception:
     _HAVE_PYAUTOGUI = False
 
 
