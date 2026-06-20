@@ -95,7 +95,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 
         logger.info("  🔍 캡차 처리 중...")
         try:
-            solved = _standalone_captcha()
+            solved = _standalone_captcha(stop_event=stop_event)
             if solved:
                 logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
                 _wait(1)
@@ -137,7 +137,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 
             if seat_zones:
                 zone_result = find_seats_in_zones(png, seat_zones, max_results_per_zone=20)
-                all_seats = zone_result["all"]
+                all_seats = zone_result.get("all", [])
                 found_group = find_consecutive_seats(
                     all_seats, n=consecutive_n,
                     row_tolerance=30, gap_tolerance=40,
@@ -180,6 +180,10 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             result["message"] = f"빈 좌석 없음 ({consecutive_n}연석, 30회)"
             logger.warning("  ⚠️ %s", result["message"])
             return result
+    else:
+        result["message"] = "❌ 좌석 검색 영역 미설정 — 설정 탭에서 좌석 영역을 지정하세요."
+        logger.warning(result["message"])
+        return result
 
     # ===== 4.5 구역선택 =====
     sc = macro.get("section_click", [0, 0])
@@ -215,13 +219,18 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 #  캡차 (시스템 스크린샷 기반)
 # ================================================================
 
-def _standalone_captcha() -> bool:
+def _standalone_captcha(stop_event: Optional[threading.Event] = None) -> bool:
     """
     시스템 스크린샷으로 캡차 해결.
     Chrome CDP 없이 pyautogui 전체화면 스크린샷 사용.
     """
     from .captcha import solve_captcha_b64 as _solve_b64
     import base64
+
+    # 중지 신호 확인
+    if stop_event and stop_event.is_set():
+        logger.warning("  ⏹️ 캡차 처리 중단")
+        return False
 
     # 1. 전체화면 스크린샷
     png = SystemBot.screenshot()
@@ -236,6 +245,11 @@ def _standalone_captcha() -> bool:
     logger.info("  🤖 캡차 인식 중...")
     captcha_text = _solve_b64(b64)
     logger.info("  ✅ 인식: \"%s\"", captcha_text)
+
+    # OCR 결과 검증 (빈 문자열이나 짧은 값이면 실패 처리)
+    if not captcha_text or len(captcha_text.strip()) < 1:
+        logger.warning("  ⚠️ 캡차 인식 결과 없음 — 건너뜀")
+        return False
 
     # 4. 키보드 입력
     SystemBot.type_text(captcha_text)
