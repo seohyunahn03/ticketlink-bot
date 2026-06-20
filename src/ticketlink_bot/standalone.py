@@ -8,16 +8,12 @@
 - 타이머 기반 딜레이 (URL 감지 불필요)
 - 글로벌 핫키 (F6/ESC)
 """
-import asyncio
-import io
-import json
 import logging
 import threading
 import time
 from typing import Optional
 
 from .system_bot import SystemBot
-from .captcha import solve_captcha as _solve_captcha
 from .seats import find_seats_in_zones, find_consecutive_seats, find_seats_by_color
 from .booking import _get_zones
 
@@ -91,11 +87,17 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     # ===== 3. 캡차 처리 (시스템 스크린샷) =====
     auto_captcha = cfg.get("booking", {}).get("auto_captcha", True)
     if auto_captcha:
+        # 중지 신호 확인
+        if stop_event and stop_event.is_set():
+            result["message"] = "⏹️ 사용자 중지"
+            logger.warning("  ⏹️ %s", result["message"])
+            return result
+
         logger.info("  🔍 캡차 처리 중...")
         try:
             solved = _standalone_captcha()
             if solved:
-                logger.info("  ✅ 캡차 해결 완료")
+                logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
                 _wait(1)
             else:
                 logger.warning("  ⚠️ 캡차 해결 실패, 계속 진행")
@@ -160,8 +162,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 break
 
             logger.info("  ↻ 빈 좌석 없음, 새로고침 (%d/30)", attempt + 1)
-            _reload_page()  # F5 키
-            _wait(refresh_delay)
+            _reload_page(refresh_delay)  # F5 키
             _click(c1[0], c1[1], "예매하기(재시도)")
             _wait(click_wait)
             if c2[0] != 0 or c2[1] != 0:
@@ -238,7 +239,7 @@ def _standalone_captcha() -> bool:
 
     # 4. 키보드 입력
     SystemBot.type_text(captcha_text)
-    _wait(0.5)
+    time.sleep(0.5)
 
     # 5. 엔터
     SystemBot.press("enter")
@@ -249,7 +250,8 @@ def _standalone_captcha() -> bool:
 #  새로고침
 # ================================================================
 
-def _reload_page():
+def _reload_page(delay: float = 1.0):
     """F5 키로 페이지 새로고침"""
     SystemBot.press("f5")
-    time.sleep(1)
+    if delay:
+        time.sleep(delay)

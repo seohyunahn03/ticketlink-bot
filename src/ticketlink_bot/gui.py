@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 from pathlib import Path
 from typing import Optional
 
@@ -370,6 +370,7 @@ class TicketlinkGUI(tk.Tk):
             "y2": tk.StringVar(value=str(area[3]) if area else "0"),
             "color": tk.StringVar(value=color or "C8C8C8"),
             "tolerance": tk.StringVar(value=str(tolerance or "20")),
+            "frame": frame,
         }
 
         ttk.Label(frame, text="↖좌상단:").grid(row=0, column=0, padx=4)
@@ -622,7 +623,7 @@ class TicketlinkGUI(tk.Tk):
 
     def _simple_input(self, title: str, prompt: str) -> str:
         """간단 입력 대화상자"""
-        return messagebox.askquestion(title, prompt)  # fallback
+        return simpledialog.askstring(title, prompt) or ""
 
     # ── UI ↔ 설정 변환 ──
 
@@ -795,7 +796,14 @@ class TicketlinkGUI(tk.Tk):
             import traceback
             traceback.print_exc()
         finally:
-            self.after(0, self._stop_macro)
+            self.after(0, self._reset_after_macro)
+
+    def _reset_after_macro(self):
+        """매크로 종료 후 UI 리셋 (상태 레이블 유지)"""
+        self._running = False
+        self._stop_event.set()
+        self._start_btn.configure(state="normal", text="▶ 시작 (F6)")
+        self._stop_btn.configure(state="disabled")
 
     # ── 도구 메뉴 ──
 
@@ -886,6 +894,8 @@ class TicketlinkGUI(tk.Tk):
         if self._running:
             if not messagebox.askyesno("종료 확인", "매크로가 실행 중입니다. 종료할까요?"):
                 return
+        if self._hotkey_listener:
+            self._hotkey_listener.stop()
         self._save_preset(self._current_preset)
         logging.getLogger("ticketlink_bot").removeHandler(self._log_handler)
         self.destroy()

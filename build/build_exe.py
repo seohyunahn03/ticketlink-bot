@@ -8,7 +8,6 @@
 """
 import os
 import sys
-import site
 import shutil
 from pathlib import Path
 
@@ -42,21 +41,33 @@ def build_exe(extra_args: list[str] | None = None) -> None:
         # 숨겨진 임포트 (PyInstaller가 자동 탐지 못하는 경우)
         "--hidden-import=websockets",
         "--hidden-import=websockets.__main__",
-        "--hidden-import=websockets.speedups",
         "--hidden-import=yaml",
         "--hidden-import=_yaml",
         "--hidden-import=PIL",
         "--hidden-import=PIL._imaging",
         "--hidden-import=PIL.Image",
+        "--hidden-import=PIL.ImageGrab",
+        "--hidden-import=PIL._imagingft",
+        "--hidden-import=PIL._webp",
         "--hidden-import=numpy",
         "--hidden-import=pytesseract",
         "--hidden-import=requests",
         "--hidden-import=requests.utils",
-        "--hidden-import=requests.packages.urllib3",
+        "--hidden-import=urllib3",
+        "--hidden-import=urllib3.util",
+        "--hidden-import=urllib3.util.ssl_",
+        "--hidden-import=charset_normalizer",
+        "--hidden-import=idna",
+        "--hidden-import=certifi",
         "--hidden-import=pyautogui",
+        "--hidden-import=pyscreeze",
         "--hidden-import=pynput",
         "--hidden-import=pynput.mouse",
         "--hidden-import=pynput.keyboard",
+        "--hidden-import=pynput._util",
+        "--hidden-import=pynput._util.win32",
+        "--hidden-import=pynput.keyboard._win32",
+        "--hidden-import=pynput.mouse._win32",
 
         # Native DLL 강제 수집 (Windows 크래시 방지)
         "--collect-all=numpy",
