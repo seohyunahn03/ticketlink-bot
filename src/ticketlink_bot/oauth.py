@@ -57,14 +57,21 @@ def _xai_discover(timeout: float = 15.0) -> dict:
     auth_endpoint = (data.get("authorization_endpoint") or "").strip()
     token_endpoint = (data.get("token_endpoint") or "").strip()
 
+    device_endpoint = (data.get("device_authorization_endpoint") or "").strip()
+
     if not auth_endpoint or not token_endpoint:
         raise RuntimeError(
             "xAI OIDC discovery 응답에 authorization_endpoint 또는 "
             "token_endpoint가 없습니다."
         )
+    if not device_endpoint:
+        raise RuntimeError(
+            "xAI OIDC에 device_authorization_endpoint 없음"
+        )
     return {
         "authorization_endpoint": auth_endpoint,
         "token_endpoint": token_endpoint,
+        "device_authorization_endpoint": device_endpoint,
     }
 
 
