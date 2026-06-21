@@ -311,6 +311,7 @@ class TicketlinkGUI(tk.Tk):
             ("captcha_input", "3️⃣ 보안문자 입력창 (매크로봇용)"),
             ("captcha_submit", "4️⃣ 보안문자 확인 버튼"),
             ("section_click", "5️⃣ 구역선택 (선택)"),
+            ("click_guide", "🔟 안내창 확인 (선택)"),
             ("click3", "6️⃣ 선택완료"),
             ("click4", "7️⃣ 결제하기 (선택)"),
             ("date_click", "8️⃣ 날짜 선택 (선택)"),
@@ -587,6 +588,37 @@ class TicketlinkGUI(tk.Tk):
         ttk.Label(frame, text="vision 모드: XAI_API_KEY 환경변수 또는 위 API 키 필드 사용",
                   font=("", 8), foreground="gray").grid(
             row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
+        row += 1
+
+        # ── 캡차 영역 (선택) ──
+        sep = ttk.Separator(frame, orient="horizontal")
+        sep.grid(row=row, column=0, columnspan=3, sticky="ew", padx=8, pady=4)
+        row += 1
+        ttk.Label(frame, text="📐 캡차 영역 (선택 — 비우면 전체화면 OCR)", font=("", 9, "bold")).grid(
+            row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
+        row += 1
+
+        ca = self._cfg.get("macro", {}).get("captcha_area", [0, 0, 0, 0])
+        cap_area_labels = [("x1", "↖x"), ("y1", "↖y"), ("x2", "↘x"), ("y2", "↘y")]
+        self._captcha_area_vars = {}
+        for ci, (ckey, clabel) in enumerate(cap_area_labels):
+            ttk.Label(frame, text=f"{clabel}:").grid(
+                row=row, column=ci * 2, sticky="w", padx=(8 if ci == 0 else 2))
+            var = tk.StringVar(value=str(ca[ci]) if len(ca) > ci else "0")
+            e = ttk.Entry(frame, textvariable=var, width=7)
+            e.grid(row=row, column=ci * 2 + 1, sticky="w", padx=2)
+            self._captcha_area_vars[ckey] = var
+
+        # 🎯 따기 버튼 (x1,y1 쌍 / x2,y2 쌍)
+        ttk.Button(frame, text="🎯 ↖",
+                   command=lambda: self._quick_pick(
+                       self._captcha_area_vars["x1"], self._captcha_area_vars["y1"])
+                   ).grid(row=row, column=8, padx=4)
+        ttk.Button(frame, text="🎯 ↘",
+                   command=lambda: self._quick_pick(
+                       self._captcha_area_vars["x2"], self._captcha_area_vars["y2"])
+                   ).grid(row=row, column=9, padx=2)
+        row += 1
 
     # ── xAI OAuth 로그인 ──
 
@@ -994,6 +1026,12 @@ class TicketlinkGUI(tk.Tk):
         self._auto_captcha_var.set(
             self._cfg.get("booking", {}).get("auto_captcha", True))
 
+        # Captcha area
+        if hasattr(self, "_captcha_area_vars"):
+            ca = macro.get("captcha_area", [0, 0, 0, 0])
+            for i, ck in enumerate(["x1", "y1", "x2", "y2"]):
+                self._captcha_area_vars[ck].set(str(ca[i]) if len(ca) > i else "0")
+
     def _collect_ui_to_cfg(self):
         """UI → 설정"""
         macro = self._cfg.setdefault("macro", {})
@@ -1072,12 +1110,24 @@ class TicketlinkGUI(tk.Tk):
             except (ValueError, KeyError):
                 macro[k] = {"max_retries": 30, "max_screenshot_fails": 5}.get(k, 0)
 
-        # xAI / captcha — UI → cfg 저장
+        # xAI / captcha — UI -> cfg 저장
         xai_cfg = self._cfg.setdefault("xai", {})
         xai_cfg["api_type"] = self._xai_api_type_var.get()
         xai_cfg["api_key"] = self._xai_api_key_var.get()
         xai_cfg["model"] = self._xai_model_var.get()
         booking["auto_captcha"] = self._auto_captcha_var.get()
+
+        # Captcha area
+        if hasattr(self, "_captcha_area_vars"):
+            try:
+                macro["captcha_area"] = [
+                    int(self._captcha_area_vars["x1"].get() or "0"),
+                    int(self._captcha_area_vars["y1"].get() or "0"),
+                    int(self._captcha_area_vars["x2"].get() or "0"),
+                    int(self._captcha_area_vars["y2"].get() or "0"),
+                ]
+            except (ValueError, KeyError):
+                macro.pop("captcha_area", None)
 
     # ── 이중봇 실행 ──
 

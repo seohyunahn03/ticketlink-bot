@@ -201,7 +201,8 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
 
         logger.info("  🔍 캡차 처리 중...")
         try:
-            solved = _standalone_captcha(stop_event=stop_event, method=captcha_method)
+            solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
+                                         captcha_area=macro.get("captcha_area"))
             if solved:
                 logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
                 _wait(1)
@@ -289,7 +290,8 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
                 _click(ci[0], ci[1], "캡차 입력창(재시도)")
                 _wait(0.3)
             try:
-                retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method)
+                retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
+                                                     captcha_area=macro.get("captcha_area"))
             except Exception as e:
                 logger.error("  ❌ 재시도 캡차 오류: %s", e)
         cs = macro.get("captcha_submit", [0, 0])
@@ -322,6 +324,16 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         _wait(section_move)
         _click(sc[0], sc[1], "구역선택")
         _wait(section_move)
+
+    # ── 안내창 확인 (선택) ──
+    cg = macro.get("click_guide", [0, 0])
+    if cg[0] != 0 or cg[1] != 0:
+        if stop_event and stop_event.is_set():
+            result["message"] = "⏹️ 사용자 중지"
+            return result
+        _wait(1)
+        _click(cg[0], cg[1], "안내창 확인")
+        _wait(click_wait)
 
     # ── 선택완료 ──
     c3 = macro.get("click3", [0, 0])
@@ -431,7 +443,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 
         logger.info("  🔍 캡차 처리 중...")
         try:
-            solved = _standalone_captcha(stop_event=stop_event, method=captcha_method)
+            solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
+                                         captcha_area=macro.get("captcha_area"))
             if solved:
                 logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
                 _wait(1)
@@ -525,7 +538,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             retry_solved = False
             if auto_captcha:
                 try:
-                    retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method)
+                    retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
+                                                       captcha_area=macro.get("captcha_area"))
                 except Exception as e:
                     logger.error("  ❌ 재시도 캡차 오류: %s", e)
             if retry_solved and (cs[0] != 0 or cs[1] != 0):
@@ -601,13 +615,19 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 # ================================================================
 
 def _standalone_captcha(stop_event: Optional[threading.Event] = None,
-                        method: str = "oauth") -> bool:
+                        method: str = "oauth",
+                        captcha_area: Optional[list] = None) -> bool:
     """
     시스템 스크린샷으로 캡차 해결.
     Chrome CDP 없이 pyautogui 전체화면 스크린샷 사용.
+
+    Args:
+        captcha_area: [x1, y1, x2, y2] — 지정 시 해당 영역만 크롭하여 OCR 처리
     """
     from .captcha import solve_captcha_b64 as _solve_b64
     import base64
+    from PIL import Image
+    import io
 
     # 중지 신호 확인
     if stop_event and stop_event.is_set():
@@ -619,6 +639,22 @@ def _standalone_captcha(stop_event: Optional[threading.Event] = None,
     if not png:
         logger.warning("  ⚠️ 스크린샷 실패")
         return False
+
+    # 1.5 캡차 영역 크롭 (지정된 경우)
+    if captcha_area and len(captcha_area) == 4 and any(captcha_area):
+        x1, y1, x2, y2 = captcha_area
+        try:
+            img = Image.open(io.BytesIO(png))
+            # 좌표 정규화 (x1 < x2, y1 < y2)
+            cx1, cx2 = min(x1, x2), max(x1, x2)
+            cy1, cy2 = min(y1, y2), max(y1, y2)
+            cropped = img.crop((cx1, cy1, cx2, cy2))
+            buf = io.BytesIO()
+            cropped.save(buf, format="PNG")
+            png = buf.getvalue()
+            logger.info("  📐 캡차 영역 크롭: (%d,%d)-(%d,%d)", cx1, cy1, cx2, cy2)
+        except Exception as e:
+            logger.warning("  ⚠️ 캡차 영역 크롭 실패: %s — 전체화면 사용", e)
 
     # 2. b64 변환 (xAI Vision API 호환)
     b64 = base64.b64encode(png).decode()

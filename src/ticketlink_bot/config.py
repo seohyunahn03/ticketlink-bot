@@ -43,6 +43,8 @@ DEFAULT_CONFIG = {
         "date_click": [0, 0],   # 날짜 좌표 (선택)
         "round_click": [0, 0],  # 회차 좌표 (선택)
         "section_click": [0, 0],# 구역선택 좌표 (선택)
+        "click_guide": [0, 0],  # 안내창 확인 좌표 (선택, 구역선택→선택완료 사이)
+        "captcha_area": [0, 0, 0, 0],  # 캡차 영역 [x1,y1,x2,y2] (선택, OCR 영역 제한)
         # ── 좌석 검색 영역 (다중 구역) ──
         # 통합매크로 방식: 여러 구역(zone) 각각 영역+색상 설정
         # 각 zone: {area: [↖x, ↖y, ↘x, ↘y], color: "BGR색상", tolerance: 오차범위}
