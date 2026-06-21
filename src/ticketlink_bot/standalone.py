@@ -709,10 +709,8 @@ def _standalone_captcha(stop_event: Optional[threading.Event] = None,
     # 4. 키보드 입력 (비정상 빠른입력 방지를 위해 지연+랜덤지터)
     from .system_bot import SystemBot as _SB
     _SB.type_text_slow(captcha_text, char_delay_ms=captcha_typing_delay)
-    time.sleep(0.3)
-
-    # 5. 엔터
-    SystemBot.press("enter")
+    # 5. 입력 대기 — captcha_submit 클릭으로 제출 (호출자에서 처리)
+    time.sleep(1.0)
     return True
 
 
