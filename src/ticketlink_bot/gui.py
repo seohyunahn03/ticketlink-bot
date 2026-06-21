@@ -658,11 +658,13 @@ class TicketlinkGUI(tk.Tk):
         row += 1
 
         # CDP port
-        ttk.Label(frame, text="CDP 포트:").grid(
-            row=row, column=0, sticky="w", padx=8, pady=4)
+        port_frame = ttk.Frame(frame)
+        port_frame.grid(row=row, column=0, columnspan=3, sticky="w", padx=8, pady=4)
+        ttk.Label(port_frame, text="CDP 포트:").pack(side="left")
         self._cdp_port_var = tk.StringVar(value=str(hijack.get("port", 9222)))
-        ttk.Entry(frame, textvariable=self._cdp_port_var, width=8).grid(
-            row=row, column=1, sticky="w", padx=4, pady=2)
+        ttk.Entry(port_frame, textvariable=self._cdp_port_var, width=8).pack(side="left", padx=4)
+        ttk.Button(port_frame, text="🚀 Chrome 실행 (CDP)",
+                   command=self._launch_cdp_chrome).pack(side="left", padx=(10, 0))
         row += 1
 
         # product_id
@@ -1372,6 +1374,81 @@ class TicketlinkGUI(tk.Tk):
             logger.error("❌ URL 읽기 오류: %s", e)
             self.after(0, lambda: logger.warning(
                 "⚠️ 오류: %s\nChrome CDP(--remote-debugging-port)가 실행 중인지 확인", e))
+
+    # ── CDP Chrome 실행 ──
+
+    def _launch_cdp_chrome(self):
+        """Chrome을 CDP(--remote-debugging-port) 모드로 실행 (macOS/Windows)"""
+        import subprocess
+        import sys
+        import os
+
+        port = self._cdp_port_var.get().strip() or "9222"
+        chrome_path = None
+
+        # OS별 Chrome 경로 찾기
+        if sys.platform == "win32":
+            candidates = [
+                os.environ.get("LOCALAPPDATA", "") + r"\Google\Chrome\Application\chrome.exe",
+                os.environ.get("PROGRAMFILES", "") + r"\Google\Chrome\Application\chrome.exe",
+                os.environ.get("PROGRAMFILES(X86)", "") + r"\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            ]
+        elif sys.platform == "darwin":
+            candidates = [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+            ]
+        else:  # Linux
+            candidates = [
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium-browser",
+                "/usr/bin/chromium",
+            ]
+
+        for p in candidates:
+            if os.path.isfile(p):
+                chrome_path = p
+                break
+
+        if not chrome_path:
+            self.after(0, lambda: logger.warning(
+                "⚠️ Chrome을 찾을 수 없습니다.\n직접 실행: Chrome --remote-debugging-port=%s", port))
+            return
+
+        # 이미 실행 중인지 확인
+        try:
+            import urllib.request
+            import json
+            req = urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=2)
+            ver = json.loads(req.read()).get("Browser", "?")
+            self.after(0, lambda: logger.info(
+                "✅ Chrome CDP 이미 실행 중 (포트 %s, %s)", port, ver))
+            return
+        except Exception:
+            pass
+
+        # Chrome 실행
+        udir = os.path.join(os.path.expanduser("~"), ".config", "chrome-cdp-profile")
+        args = [
+            chrome_path,
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={udir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--start-maximized",
+        ]
+        try:
+            if sys.platform == "win32":
+                subprocess.Popen(args, shell=False)
+            else:
+                subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.after(0, lambda: logger.info(
+                "🚀 Chrome 실행 중... (포트 %s)\nCDP 연결 준비: [📋 URL에서 읽기] 클릭", port))
+        except Exception as e:
+            self.after(0, lambda: logger.error("❌ Chrome 실행 실패: %s", e))
 
     # ── 이중봇 실행 ──
 
