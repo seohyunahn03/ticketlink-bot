@@ -144,57 +144,56 @@ def _fetch_games_from_cdp(product_id: str, cdp_port: int = 9222) -> list[dict]:
 def _read_ids_from_cdp(cdp_port: int = 9222) -> dict:
     """현재 Chrome 페이지 URL/폼에서 경기코드(productId+scheduleId) 읽기
 
+    WebSocket 연결 → 현재 페이지 추출, 실패 시 HTTP /json 으로 모든 탭/팝업 스캔.
+
     Args:
         cdp_port: Chrome CDP 포트
 
     Returns:
-        {"productId": "62162", "scheduleId": "1492740043", "url": "..."}
+        {"productId": "62162", "scheduleId": "1492740043", "url": "...", "source": "..."}
         또는 실패 시 빈 dict
     """
+    from .cdp_hijack import CdpHijack
+    import asyncio
+
+    hijack = CdpHijack(cdp_port=cdp_port)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        from .cdp_hijack import CdpHijack
-        import asyncio
-
-        hijack = CdpHijack(cdp_port=cdp_port)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            ok = loop.run_until_complete(hijack.connect())
-            if not ok:
-                logger.warning("  ⚠️ CDP 연결 실패 (포트 %d)", cdp_port)
-                return {}
-
+        ok = loop.run_until_complete(hijack.connect())
+        if ok:
             data = loop.run_until_complete(hijack.extract_ids_from_current_page())
             loop.run_until_complete(hijack.close())
-
-            if not data:
-                return {}
-
-            result = {"_raw": data}
-            # URL에서 scheduleId 우선
-            if data.get("scheduleId_from_url"):
-                result["scheduleId"] = data["scheduleId_from_url"]
-            elif data.get("scheduleId_from_form"):
-                result["scheduleId"] = data["scheduleId_from_form"]
-
-            # URL에서 productId 우선
-            if data.get("productId_from_url"):
-                result["productId"] = data["productId_from_url"]
-            elif data.get("productId_from_form"):
-                result["productId"] = data["productId_from_form"]
-            elif data.get("productId_from_path"):
-                result["productId"] = data["productId_from_path"]
-
-            if result.get("url") or data.get("url"):
-                result["url"] = data.get("url", "")
-
-            return result
-        except Exception:
+            if data.get("productId") or data.get("scheduleId"):
+                return data
+            # WS 연결은 됐지만 ID를 못 찾음 → 팝업 스캔 시도
+    except Exception:
+        pass
+    finally:
+        try:
             loop.close()
-            raise
-    except Exception as e:
-        logger.error("  ❌ URL 읽기 오류: %s", e)
-        return {}
+        except Exception:
+            pass
+
+    # 2차: HTTP /json 으로 모든 탭/팝업 스캔 (WebSocket 불필요)
+    try:
+        popup = hijack._find_reserve_page_target()
+        if popup:
+            url = popup.get("url", "")
+            pid = hijack._parse_product_id(url)
+            sid = hijack._parse_schedule_id(url)
+            if pid or sid:
+                logger.info("  ✅ 예매 팝업 발견 (HTTP 스캔): %s", url[:80])
+                return {
+                    "productId": pid,
+                    "scheduleId": sid,
+                    "url": url,
+                    "source": "http_scanned_popup",
+                }
+    except Exception:
+        pass
+
+    return {}
 
 
 # ================================================================

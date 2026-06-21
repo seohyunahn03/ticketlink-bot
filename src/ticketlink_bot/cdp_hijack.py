@@ -299,45 +299,124 @@ class CdpHijack:
     async def extract_ids_from_current_page(self) -> dict:
         """현재 페이지 URL/폼에서 productId + scheduleId 추출
 
+        현재 연결된 페이지에서 추출 후, /reserve/product/ 가 없으면
+        모든 CDP 페이지 타겟을 스캔해서 예매 팝업을 찾습니다.
+
         Returns:
-            {"productId": "62162", "scheduleId": "1492740043", ...}
+            {"productId": "62162", "scheduleId": "1492740043", "url": "...",
+             "source": "current_page"|"scanned_popup"}
             또는 실패 시 빈 dict
         """
-        if not self.ws:
-            return {}
+        result = {}
 
+        # 1. 현재 연결된 페이지에서 추출
+        if self.ws:
+            result = await self._extract_ids_from_ws()
+            pid = result.get("productId_from_url") or result.get("productId_from_form") or ""
+            sid = result.get("scheduleId_from_url") or result.get("scheduleId_from_form") or ""
+            url = result.get("url", "")
+            if "/reserve/product/" in url and pid and sid:
+                result["source"] = "current_page"
+                return self._normalize_ids(result)
+
+        # 2. 모든 CDP 타겟 스캔 (HTTP /json) → 예매 팝업 찾기
+        logger.info("  🔍 현재 페이지에 예매 URL 없음 — 모든 탭/팝업 스캔...")
+        popup = self._find_reserve_page_target()
+        if popup:
+            url = popup.get("url", "")
+            pid = self._parse_product_id(url)
+            sid = self._parse_schedule_id(url)
+            if pid or sid:
+                logger.info("  ✅ 예매 팝업 발견: %s", url[:80])
+                return self._normalize_ids({
+                    "url": url,
+                    "productId_from_url": pid or "",
+                    "scheduleId_from_url": sid or "",
+                    "source": "scanned_popup",
+                })
+
+        # 3. 현재 페이지 결과라도 반환
+        if result:
+            result["source"] = "current_page"
+            return self._normalize_ids(result)
+
+        return {}
+
+    def _find_reserve_page_target(self) -> Optional[dict]:
+        """CDP /json 에서 /reserve/product/ URL을 가진 페이지 타겟 찾기"""
+        try:
+            resp = urllib.request.urlopen(
+                f"http://127.0.0.1:{self.cdp_port}/json", timeout=5
+            )
+            targets = json.loads(resp.read().decode())
+            for t in targets:
+                if t.get("type") == "page":
+                    url = t.get("url", "")
+                    if "/reserve/product/" in url:
+                        return t
+            # reserve/product 말고 scheduleId 있는 페이지만 찾기
+            for t in targets:
+                if t.get("type") == "page":
+                    url = t.get("url", "")
+                    if "ticketlink" in url and "scheduleId=" in url:
+                        return t
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _parse_product_id(url: str) -> str:
+        """URL에서 productId 추출"""
+        import re
+        m = re.search(r"/reserve/product/(\d+)", url)
+        return m.group(1) if m else ""
+
+    @staticmethod
+    def _parse_schedule_id(url: str) -> str:
+        """URL에서 scheduleId 추출"""
+        import re
+        m = re.search(r"[?&]scheduleId=(\d+)", url)
+        return m.group(1) if m else ""
+
+    @staticmethod
+    def _normalize_ids(raw: dict) -> dict:
+        """원시 추출 결과를 정규화된 dict로 변환"""
+        pid = (raw.get("productId_from_url") or raw.get("productId_from_form")
+               or raw.get("productId_from_path") or "")
+        sid = (raw.get("scheduleId_from_url") or raw.get("scheduleId_from_form") or "")
+        return {
+            "productId": pid,
+            "scheduleId": sid,
+            "url": raw.get("url", ""),
+            "source": raw.get("source", "unknown"),
+        }
+
+    async def _extract_ids_from_ws(self) -> dict:
+        """현재 WebSocket 페이지에서 URL/폼 데이터 추출"""
         result = await self._send_with_result("Runtime.evaluate", {
             "expression": r"""(() => {
                 const res = {};
-
-                // 1. URL 파싱
                 const url = window.location.href;
                 res.url = url;
 
-                // URL에서 scheduleId 추출 (?scheduleId=XXX)
                 const sidMatch = url.match(/[?&]scheduleId=(\d+)/);
                 if (sidMatch) res.scheduleId_from_url = sidMatch[1];
 
-                // URL에서 productId 추출 (/reserve/product/XXXXX)
                 const pidMatch = url.match(/\/reserve\/product\/(\d+)/);
                 if (pidMatch) res.productId_from_url = pidMatch[1];
 
-                // 2. 폼 필드에서 읽기
                 const pi = document.querySelector('input[name="productId"]');
                 if (pi) res.productId_from_form = pi.value;
 
                 const si = document.querySelector('input[name="scheduleId"]');
                 if (si) res.scheduleId_from_form = si.value;
 
-                // 3. React/SPA state (경로 파라미터)
-                //    history.pushState / replaceState 로 전달된 값
                 try {
                     const path = window.location.pathname;
                     const pathPid = path.match(/\/reserve\/product\/(\d+)/);
                     if (pathPid) res.productId_from_path = pathPid[1];
                 } catch(e) {}
 
-                // 4. 데이터 버전/타임스탬프
                 const m = document.querySelector('meta[name="build-timestamp"]');
                 if (m) res.build_timestamp = m.content;
 

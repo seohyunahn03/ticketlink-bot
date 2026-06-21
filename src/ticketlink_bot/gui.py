@@ -1352,7 +1352,8 @@ class TicketlinkGUI(tk.Tk):
                 self.after(0, lambda: logger.warning(
                     "⚠️ URL에서 경기코드를 찾을 수 없습니다.\n"
                     "Chrome CDP(--remote-debugging-port=%d)가 실행 중이고\n"
-                    "티켓링크 예매 페이지가 열려있는지 확인하세요.", cdp_port))
+                    "예매 팝업(새 창)이 열려있는지 확인하세요.\n"
+                    "※ 모든 탭/팝업을 자동 스캔합니다.", cdp_port))
                 return
 
             pid = result.get("productId", "")
