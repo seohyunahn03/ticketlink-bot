@@ -212,12 +212,6 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         except Exception as e:
             logger.error("  ❌ 캡차 오류: %s", e)
 
-        # 캡차 확인 버튼
-        cs = macro.get("captcha_submit", [0, 0])
-        if solved and (cs[0] != 0 or cs[1] != 0):
-            _click(cs[0], cs[1], "보안문자 확인")
-            _wait(click_wait)
-
     # ── 좌석 검색 ──
     seat_zones = _get_zones(macro)
     if not seat_zones:
@@ -296,13 +290,6 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
                                                      captcha_typing_delay=delays.get("captcha_typing_delay", 80))
             except Exception as e:
                 logger.error("  ❌ 재시도 캡차 오류: %s", e)
-        cs = macro.get("captcha_submit", [0, 0])
-        if retry_solved and (cs[0] != 0 or cs[1] != 0):
-            if stop_event and stop_event.is_set():
-                result["message"] = "⏹️ 사용자 중지 (캡차 재시도)"
-                return result
-            _click(cs[0], cs[1], "보안문자 확인(재시도)")
-            _wait(click_wait)
 
     if not found_group:
         result["message"] = f"빈 좌석 없음 ({consecutive_n}연석, {max_retries}회)"
@@ -466,12 +453,6 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         except Exception as e:
             logger.error("  ❌ 캡차 오류: %s", e)
 
-    # ===== 3.5 캡차 확인 버튼 (캡차 성공 시에만) =====
-    cs = macro.get("captcha_submit", [0, 0])
-    if solved and (cs[0] != 0 or cs[1] != 0):
-        _click(cs[0], cs[1], "보안문자 확인")
-        _wait(click_wait)
-
     # ===== 4. 좌석 검색 (시스템 스크린샷) =====
     seat_area = macro.get("seat_area", [0, 0, 0, 0])
     seat_color = macro.get("seat_color", "C8C8C8")
@@ -556,13 +537,6 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                                                        captcha_typing_delay=delays.get("captcha_typing_delay", 80))
                 except Exception as e:
                     logger.error("  ❌ 재시도 캡차 오류: %s", e)
-            if retry_solved and (cs[0] != 0 or cs[1] != 0):
-                if stop_event and stop_event.is_set():
-                    result["message"] = "⏹️ 사용자 중지 (캡차 재시도)"
-                    logger.warning("  ⏹️ %s", result["message"])
-                    return result
-                _click(cs[0], cs[1], "보안문자 확인(재시도)")
-                _wait(click_wait)
 
         if found_group:
             for i, (sx, sy) in enumerate(found_group):
@@ -709,7 +683,10 @@ def _standalone_captcha(stop_event: Optional[threading.Event] = None,
     # 4. 키보드 입력 (비정상 빠른입력 방지를 위해 지연+랜덤지터)
     from .system_bot import SystemBot as _SB
     _SB.type_text_slow(captcha_text, char_delay_ms=captcha_typing_delay)
-    # 5. 입력 대기 — captcha_submit 클릭으로 제출 (호출자에서 처리)
+    # 5. 사람처럼 Enter 누르기 전에 잠시 망설임 (0.3~0.8초)
+    import random as _rand
+    time.sleep(_rand.uniform(0.3, 0.8))
+    SystemBot.press("enter")
     time.sleep(1.0)
     return True
 
