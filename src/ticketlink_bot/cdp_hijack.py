@@ -129,20 +129,15 @@ HIJACK_SCRIPT_JS = r"""(() => {
 
 # ── 검증 스크립트 ─────────────────────────────────────────────────
 VERIFY_SCRIPT_JS = """(() => {
-    const fn = HTMLFormElement.prototype.submit.toString();
-    const isHijacked = fn.includes('__TL_PRODUCT_ID__') || fn.includes('const PID');
-    // Try to extract PID/SID from the function
+    const m = document.querySelector('meta[name="tl-hijack"]');
+    const active = m !== null;
     let pid = null, sid = null;
-    const pm = fn.match(/const PID = [\"'](\\d+)[\"']/);
-    const sm = fn.match(/const SID = [\"'](\\d+)[\"']/);
-    if (pm) pid = pm[1];
-    if (sm) sid = sm[1];
-    return {
-        active: isHijacked && pid !== null,
-        pid: pid,
-        sid: sid,
-        submitHijacked: isHijacked
-    };
+    if (active && m.content) {
+        const parts = m.content.split('/');
+        pid = parts[0] || null;
+        sid = parts[1] || null;
+    }
+    return {active, pid, sid};
 })();
 """
 
@@ -154,6 +149,8 @@ class CdpHijack:
         self.cdp_port = cdp_port
         self.ws: Optional["websocket"] = None  # type: ignore
         self._script_ids: list[str] = []
+        self._last_pid: Optional[str] = None
+        self._last_sid: Optional[str] = None
 
     # ── 연결 ──────────────────────────────────────────────────────
 
@@ -202,21 +199,20 @@ class CdpHijack:
     async def inject(self, product_id: str, schedule_id: str) -> bool:
         """폼 하이재킹 스크립트 주입
 
-        Page.addScriptToEvaluateOnNewDocument 로 등록하여
-        모든 새 페이지/내비게이션 후에도 유지.
-        (일반 Chrome에서 정상 동작, headless Chrome에서는 제한됨)
+        runImmediately=True 로 현재 페이지에 즉시 적용.
+        Page.addScriptToEvaluateOnNewDocument 로 새 문서에도 자동 적용.
 
         Args:
             product_id: 구단 productId (예: "62162")
             schedule_id: 경기 scheduleId (예: "1492740043")
 
         Returns:
-            True if 등록 성공 (실제 적용은 다음 페이지 로드 시)
+            True if 등록 성공
         """
         if not self.ws or not product_id or not schedule_id:
             return False
 
-        # 값이 내장된 스크립트 생성 (window 변수 불필요)
+        # 값이 내장된 스크립트 생성
         hijack_js = f"""(() => {{
     const PID = {json.dumps(product_id)};
     const SID = {json.dumps(schedule_id)};
@@ -236,29 +232,55 @@ class CdpHijack:
             u = `/reserve/product/${{PID}}?scheduleId=${{SID}}`;
         return OO.call(window, u, t, f);
     }};
+    // 검증용 DOM 마커
+    const m = document.createElement('meta');
+    m.name = 'tl-hijack';
+    m.content = PID + '/' + SID;
+    document.head?.appendChild(m);
 }})();
 """
 
-        # 등록 (새 문서마다 자동 실행)
+        # runImmediately=true: 현재 페이지 즉시 적용 + 새 문서에도 자동 적용
+        result = await self._send_with_result(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": hijack_js, "runImmediately": True},
+        )
+        if result and "identifier" in result:
+            self._script_ids.append(result["identifier"])
+            self._last_pid = product_id
+            self._last_sid = schedule_id
+            logger.info(
+                "✅ 폼 하이재킹 활성 (product=%s, schedule=%s)",
+                product_id, schedule_id,
+            )
+            return True
+
+        # fallback: runImmediately 없이 등록
         result = await self._send_with_result(
             "Page.addScriptToEvaluateOnNewDocument",
             {"source": hijack_js},
         )
         if result and "identifier" in result:
             self._script_ids.append(result["identifier"])
+            self._last_pid = product_id
+            self._last_sid = schedule_id
             logger.info(
-                "✅ 폼 하이재킹 등록 완료 (product=%s, schedule=%s) — "
-                "다음 페이지 로드 시 활성화",
-                product_id, schedule_id,
-            )
+                "✅ 폼 하이재킹 등록 (다음 페이지 로드 시 활성화)")
             return True
 
         logger.error(
-            "❌ 스크립트 등록 실패 — Chrome이 headless 모드인지 확인\n"
-            "   일반 Chrome: --remote-debugging-port=%d 로 실행 필요",
+            "❌ 스크립트 등록 실패 — Chrome CDP 포트 %d 확인",
             self.cdp_port,
         )
         return False
+
+    # ── 재주입 (F5/내비게이션 후) ─────────────────────────────────
+
+    async def re_inject(self) -> bool:
+        """마지막으로 inject 한 값으로 다시 주입 (F5 후 호출)"""
+        if not self._last_pid or not self._last_sid:
+            return False
+        return await self.inject(self._last_pid, self._last_sid)
 
     # ── 검증 ──────────────────────────────────────────────────────
 
