@@ -205,12 +205,18 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
                                          captcha_area=macro.get("captcha_area"),
                                          captcha_typing_delay=delays.get("captcha_typing_delay", 80))
             if solved:
-                logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
+                logger.info("  ✅ 캡차 입력 완료")
                 _wait(1)
             else:
                 logger.warning("  ⚠️ 캡차 해결 실패, 계속 진행")
         except Exception as e:
             logger.error("  ❌ 캡차 오류: %s", e)
+
+    # ── 전처리: 구역선택 → 직접선택 → 안내창확인 (좌석검색 전에 실행) ──
+    logger.info("  🏁 전처리: 구역선택 → 직접선택 → 안내창확인")
+    if not _do_preroll(macro, delays, stop_event, section_move, click_wait):
+        result["message"] = "⏹️ 사용자 중지 (전처리 중)"
+        return result
 
     # ── 좌석 검색 ──
     seat_zones = _get_zones(macro)
@@ -279,7 +285,6 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         # 캡차 재해결
         retry_solved = False
         if auto_captcha:
-            # 캡차 입력창 포커스 (retry에서도 필요)
             ci = macro.get("captcha_input", [0, 0])
             if ci[0] != 0 or ci[1] != 0:
                 _click(ci[0], ci[1], "캡차 입력창(재시도)")
@@ -290,6 +295,11 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
                                                      captcha_typing_delay=delays.get("captcha_typing_delay", 80))
             except Exception as e:
                 logger.error("  ❌ 재시도 캡차 오류: %s", e)
+        # 재시도 시에도 전처리 다시 실행
+        logger.info("  🔁 전처리 재실행 (구역선택 → 직접선택 → 안내창확인)")
+        if not _do_preroll(macro, delays, stop_event, section_move, click_wait):
+            result["message"] = "⏹️ 사용자 중지 (재시도 전처리 중)"
+            return result
 
     if not found_group:
         result["message"] = f"빈 좌석 없음 ({consecutive_n}연석, {max_retries}회)"
@@ -303,36 +313,6 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
             return result
         _click(sx, sy, f"좌석선택({i+1})")
         _wait(seat_click_delay)
-
-    # ── 구역선택 ──
-    sc = macro.get("section_click", [0, 0])
-    if sc[0] != 0 or sc[1] != 0:
-        if stop_event and stop_event.is_set():
-            result["message"] = "⏹️ 사용자 중지"
-            return result
-        _wait(section_move)
-        _click(sc[0], sc[1], "구역선택")
-        _wait(section_move)
-
-    # ── 직접선택 (선택) ──
-    ds = macro.get("direct_select", [0, 0])
-    if ds[0] != 0 or ds[1] != 0:
-        if stop_event and stop_event.is_set():
-            result["message"] = "⏹️ 사용자 중지"
-            return result
-        _wait(1)
-        _click(ds[0], ds[1], "직접선택")
-        _wait(click_wait)
-
-    # ── 안내창 확인 (선택) ──
-    cg = macro.get("click_guide", [0, 0])
-    if cg[0] != 0 or cg[1] != 0:
-        if stop_event and stop_event.is_set():
-            result["message"] = "⏹️ 사용자 중지"
-            return result
-        _wait(1)
-        _click(cg[0], cg[1], "안내창 확인")
-        _wait(click_wait)
 
     # ── 선택완료 ──
     c3 = macro.get("click3", [0, 0])
@@ -362,6 +342,47 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         result["stage"] = "complete"
     logger.info("  🎉 %s", result["message"])
     return result
+
+
+# ================================================================
+#  전처리: 구역선택 → 직접선택 → 안내창확인
+# ================================================================
+
+def _do_preroll(macro: dict, delays: dict, stop_event=None,
+                section_move=0.2, click_wait=3) -> bool:
+    """구역선택 → 직접선택 → 안내창확인 (좌석검색 전에 실행)
+
+    Returns:
+        False면 중지 요청 (호출자는 즉시 반환해야 함)
+    """
+    # 구역선택
+    sc = macro.get("section_click", [0, 0])
+    if sc[0] != 0 or sc[1] != 0:
+        if stop_event and stop_event.is_set():
+            return False
+        _wait(section_move)
+        _click(sc[0], sc[1], "구역선택")
+        _wait(section_move)
+
+    # 직접선택 (선택)
+    ds = macro.get("direct_select", [0, 0])
+    if ds[0] != 0 or ds[1] != 0:
+        if stop_event and stop_event.is_set():
+            return False
+        _wait(1)
+        _click(ds[0], ds[1], "직접선택")
+        _wait(click_wait)
+
+    # 안내창 확인 (선택)
+    cg = macro.get("click_guide", [0, 0])
+    if cg[0] != 0 or cg[1] != 0:
+        if stop_event and stop_event.is_set():
+            return False
+        _wait(1)
+        _click(cg[0], cg[1], "안내창 확인")
+        _wait(click_wait)
+
+    return True
 
 
 # ================================================================
@@ -453,6 +474,12 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         except Exception as e:
             logger.error("  ❌ 캡차 오류: %s", e)
 
+    # ===== 3.5 전처리: 구역선택 → 직접선택 → 안내창확인 =====
+    logger.info("  🏁 전처리: 구역선택 → 직접선택 → 안내창확인")
+    if not _do_preroll(macro, delays, stop_event, section_move, click_wait):
+        result["message"] = "⏹️ 사용자 중지 (전처리 중)"
+        return result
+
     # ===== 4. 좌석 검색 (시스템 스크린샷) =====
     seat_area = macro.get("seat_area", [0, 0, 0, 0])
     seat_color = macro.get("seat_color", "C8C8C8")
@@ -537,6 +564,11 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                                                        captcha_typing_delay=delays.get("captcha_typing_delay", 80))
                 except Exception as e:
                     logger.error("  ❌ 재시도 캡차 오류: %s", e)
+            # 재시도 시에도 전처리 다시 실행
+            logger.info("  🔁 전처리 재실행 (구역선택 → 직접선택 → 안내창확인)")
+            if not _do_preroll(macro, delays, stop_event, section_move, click_wait):
+                result["message"] = "⏹️ 사용자 중지 (재시도 전처리 중)"
+                return result
 
         if found_group:
             for i, (sx, sy) in enumerate(found_group):
@@ -554,39 +586,6 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         result["message"] = "❌ 좌석 검색 영역 미설정 — 설정 탭에서 좌석 영역을 지정하세요."
         logger.warning(result["message"])
         return result
-
-    # ===== 4.5 구역선택 =====
-    sc = macro.get("section_click", [0, 0])
-    if sc[0] != 0 or sc[1] != 0:
-        if stop_event and stop_event.is_set():
-            result["message"] = "⏹️ 사용자 중지"
-            logger.warning("  ⏹️ %s", result["message"])
-            return result
-        _wait(section_move)
-        _click(sc[0], sc[1], "구역선택")
-        _wait(section_move)
-
-    # ===== 4.6 직접선택 (선택) =====
-    ds = macro.get("direct_select", [0, 0])
-    if ds[0] != 0 or ds[1] != 0:
-        if stop_event and stop_event.is_set():
-            result["message"] = "⏹️ 사용자 중지"
-            logger.warning("  ⏹️ %s", result["message"])
-            return result
-        _wait(1)
-        _click(ds[0], ds[1], "직접선택")
-        _wait(click_wait)
-
-    # ===== 4.7 안내창 확인 (선택) =====
-    cg = macro.get("click_guide", [0, 0])
-    if cg[0] != 0 or cg[1] != 0:
-        if stop_event and stop_event.is_set():
-            result["message"] = "⏹️ 사용자 중지"
-            logger.warning("  ⏹️ %s", result["message"])
-            return result
-        _wait(1)
-        _click(cg[0], cg[1], "안내창 확인")
-        _wait(click_wait)
 
     # ===== 5. 선택완료 =====
     c3 = macro.get("click3", [0, 0])
