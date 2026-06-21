@@ -129,14 +129,18 @@ HIJACK_SCRIPT_JS = r"""(() => {
 
 # ── 검증 스크립트 ─────────────────────────────────────────────────
 VERIFY_SCRIPT_JS = """(() => {
-    const pid = window.__TL_PRODUCT_ID__;
-    const sid = window.__TL_SCHEDULE_ID__;
-    const isHijacked = typeof HTMLFormElement.prototype.submit === 'function'
-        && HTMLFormElement.prototype.submit.toString().includes('TARGET');
+    const fn = HTMLFormElement.prototype.submit.toString();
+    const isHijacked = fn.includes('__TL_PRODUCT_ID__') || fn.includes('const PID');
+    // Try to extract PID/SID from the function
+    let pid = null, sid = null;
+    const pm = fn.match(/const PID = [\"'](\\d+)[\"']/);
+    const sm = fn.match(/const SID = [\"'](\\d+)[\"']/);
+    if (pm) pid = pm[1];
+    if (sm) sid = sm[1];
     return {
-        active: Boolean(pid && sid),
-        pid: pid || null,
-        sid: sid || null,
+        active: isHijacked && pid !== null,
+        pid: pid,
+        sid: sid,
         submitHijacked: isHijacked
     };
 })();
@@ -165,22 +169,30 @@ class CdpHijack:
         return True
 
     def _find_page_ws_url(self) -> Optional[str]:
-        """Chrome의 /json/version 또는 /json 에서 page WebSocket URL 탐색"""
-        for path in ("/json/version", "/json"):
+        """Chrome의 /json 에서 page WebSocket URL 탐색"""
+        # /json → page 타겟 우선 (개별 페이지 WS 필요: Page/Runtime 도메인)
+        for path in ("/json", "/json/version"):
             try:
                 resp = urllib.request.urlopen(
                     f"http://127.0.0.1:{self.cdp_port}{path}", timeout=5
                 )
                 data = json.loads(resp.read().decode())
-                if path == "/json/version":
-                    ws = data.get("webSocketDebuggerUrl")
-                    if ws:
-                        return ws
-                else:
-                    # /json → page 타겟 찾기
+                if path == "/json":
+                    # /json returns a list of targets
                     for t in data:
                         if t.get("type") == "page":
-                            return t["webSocketDebuggerUrl"]
+                            ws = t.get("webSocketDebuggerUrl")
+                            if ws:
+                                return ws
+                else:
+                    # /json/version → browser-level WS (fallback)
+                    ws = data.get("webSocketDebuggerUrl")
+                    if ws:
+                        logger.info(
+                            "  ℹ️ 페이지 타겟 없음, 브라우저 레벨 WS 사용 "
+                            "(Page 명령 제한됨)"
+                        )
+                        return ws
             except Exception:
                 continue
         return None
@@ -188,43 +200,64 @@ class CdpHijack:
     # ── 스크립트 주입 ─────────────────────────────────────────────
 
     async def inject(self, product_id: str, schedule_id: str) -> bool:
-        """폼 하이재킹 스크립트 주입 (navigations 유지)"""
+        """폼 하이재킹 스크립트 주입
+
+        Page.addScriptToEvaluateOnNewDocument 로 등록하여
+        모든 새 페이지/내비게이션 후에도 유지.
+        (일반 Chrome에서 정상 동작, headless Chrome에서는 제한됨)
+
+        Args:
+            product_id: 구단 productId (예: "62162")
+            schedule_id: 경기 scheduleId (예: "1492740043")
+
+        Returns:
+            True if 등록 성공 (실제 적용은 다음 페이지 로드 시)
+        """
         if not self.ws or not product_id or not schedule_id:
             return False
 
-        # 1) Runtime.evaluate → 전역 변수 설정
-        globals_js = json.dumps({
-            "__TL_PRODUCT_ID__": product_id,
-            "__TL_SCHEDULE_ID__": schedule_id,
-        })
-        ok = await self._send("Runtime.evaluate", {
-            "expression": f"(() => {{{globals_js[1:-1]}}})()",
-            "returnByValue": False,
-        })
-        if not ok:
-            return False
+        # 값이 내장된 스크립트 생성 (window 변수 불필요)
+        hijack_js = f"""(() => {{
+    const PID = {json.dumps(product_id)};
+    const SID = {json.dumps(schedule_id)};
+    const OS = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function () {{
+        try {{
+            const pi = this.querySelector('input[name="productId"]');
+            const si = this.querySelector('input[name="scheduleId"]');
+            if (pi) pi.value = PID;
+            if (si) si.value = SID;
+        }} catch (e) {{}}
+        return OS.apply(this, arguments);
+    }};
+    const OO = window.open;
+    window.open = function (u, t, f) {{
+        if (u && u.includes('/reserve/product/'))
+            u = `/reserve/product/${{PID}}?scheduleId=${{SID}}`;
+        return OO.call(window, u, t, f);
+    }};
+}})();
+"""
 
-        # 2) 현재 페이지에 1회 실행
-        ok = await self._send("Runtime.evaluate", {
-            "expression": HIJACK_SCRIPT_JS,
-            "returnByValue": False,
-        })
-        if not ok:
-            return False
-
-        # 3) 새로고침/내비게이션 후에도 유지
-        result = await self._send_with_result("Page.addScriptToEvaluateOnNewDocument", {
-            "source": HIJACK_SCRIPT_JS,
-        })
+        # 등록 (새 문서마다 자동 실행)
+        result = await self._send_with_result(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": hijack_js},
+        )
         if result and "identifier" in result:
             self._script_ids.append(result["identifier"])
             logger.info(
-                "✅ 폼 하이재킹 주입 완료  (product=%s, schedule=%s)",
+                "✅ 폼 하이재킹 등록 완료 (product=%s, schedule=%s) — "
+                "다음 페이지 로드 시 활성화",
                 product_id, schedule_id,
             )
             return True
 
-        logger.error("❌ Page.addScriptToEvaluateOnNewDocument 실패")
+        logger.error(
+            "❌ 스크립트 등록 실패 — Chrome이 headless 모드인지 확인\n"
+            "   일반 Chrome: --remote-debugging-port=%d 로 실행 필요",
+            self.cdp_port,
+        )
         return False
 
     # ── 검증 ──────────────────────────────────────────────────────
