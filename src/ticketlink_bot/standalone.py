@@ -276,10 +276,15 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
                 result["message"] = "⏹️ 사용자 중지 (새로고침 중)"
                 return result
             _reload_page(0.05)  # 50ms 간격 F5
+        # F5 스팸 종료 → 페이지 로딩 대기
+        logger.info("  ⏳ 페이지 로딩 대기 중... (1.5초)")
+        time.sleep(1.5)
     else:
         # 서버시간 없음: 그냥 한 번 F5
         logger.info("  🔄 서버시간 미설정 — 기본 새로고침")
-        _reload_page(1.0)
+        _reload_page(0)  # F5만 누르고 바로 대기
+        logger.info("  ⏳ 페이지 로딩 대기 중... (2.5초)")
+        time.sleep(2.5)  # 일반모드는 더 넉넉하게
 
     # ── 예매하기 ──
     if stop_event and stop_event.is_set():
