@@ -158,8 +158,9 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 3)
-    seat_click_delay = delays.get("seat_click", 500) / 1000.0
-    refresh_delay = delays.get("refresh", 2000) / 1000.0
+    seat_click_delay = delays.get("seat_click", 10) / 1000.0
+    refresh_delay = delays.get("refresh", 500) / 1000.0
+    section_move = delays.get("section_move", 200) / 1000.0
 
     max_retries = macro.get("max_retries", 30)
     max_screenshot_fails = macro.get("max_screenshot_fails", 5)
@@ -310,9 +311,9 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
             return result
-        _wait(1)
+        _wait(section_move)
         _click(sc[0], sc[1], "구역선택")
-        _wait(2)
+        _wait(section_move)
 
     # ── 선택완료 ──
     c3 = macro.get("click3", [0, 0])
@@ -363,8 +364,9 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 3)
-    seat_click_delay = delays.get("seat_click", 500) / 1000.0
-    refresh_delay = delays.get("refresh", 2000) / 1000.0
+    seat_click_delay = delays.get("seat_click", 10) / 1000.0
+    refresh_delay = delays.get("refresh", 500) / 1000.0
+    section_move = delays.get("section_move", 200) / 1000.0
     # 매크로 제어값 (설정 가능, 기본값은 config.py DEFAULT_CONFIG 참조)
     max_retries = macro.get("max_retries", 30)
     max_screenshot_fails = macro.get("max_screenshot_fails", 5)
@@ -550,9 +552,9 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             result["message"] = "⏹️ 사용자 중지"
             logger.warning("  ⏹️ %s", result["message"])
             return result
-        _wait(1)
+        _wait(section_move)
         _click(sc[0], sc[1], "구역선택")
-        _wait(2)
+        _wait(section_move)
 
     # ===== 5. 선택완료 =====
     c3 = macro.get("click3", [0, 0])
