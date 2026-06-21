@@ -2,9 +2,11 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 build/pyi-*/
+build/ticketlink-bot/
 dist/*.app
 dist/ticketlink-bot-macos.zip
 dist/ticketlink-bot.command
+dist/ticketlink-bot
 *.dmg
 .venv/
 venv/

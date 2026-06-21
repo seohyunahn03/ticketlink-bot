@@ -127,11 +127,32 @@ class SystemBot:
     # ── 키보드 ──
 
     @staticmethod
-    def type_text(text: str) -> None:
-        """키보드 입력 (한글은 OS 입력기 의존)"""
+    def type_text(text: str, interval: float = 0.05) -> None:
+        """키보드 입력 (한글은 OS 입력기 의존)
+
+        Args:
+            interval: 글자간 간격(초). 기본 0.05=50ms.
+        """
         if not _HAVE_PYAUTOGUI:
             return
-        pyautogui.write(text, interval=0.05)
+        pyautogui.write(text, interval=interval)
+
+    @staticmethod
+    def type_text_slow(text: str, char_delay_ms: int = 80) -> None:
+        """캡차 입력용 — 문자당 지연시간 설정 가능, 비정상 빠른입력 방지
+
+        Args:
+            char_delay_ms: 글자당 지연시간(ms). 기본 80ms.
+        """
+        if not _HAVE_PYAUTOGUI:
+            return
+        interval = char_delay_ms / 1000.0
+        # 20~30% 랜덤 지터 추가 (사람 입력처럼)
+        import random
+        for ch in text:
+            pyautogui.write(ch, interval=0)
+            jitter = random.uniform(0.8, 1.3)
+            time.sleep(interval * jitter)
 
     @staticmethod
     def press(key: str) -> None:

@@ -202,7 +202,8 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         logger.info("  🔍 캡차 처리 중...")
         try:
             solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
-                                         captcha_area=macro.get("captcha_area"))
+                                         captcha_area=macro.get("captcha_area"),
+                                         captcha_typing_delay=delays.get("captcha_typing_delay", 80))
             if solved:
                 logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
                 _wait(1)
@@ -291,7 +292,8 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
                 _wait(0.3)
             try:
                 retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
-                                                     captcha_area=macro.get("captcha_area"))
+                                                     captcha_area=macro.get("captcha_area"),
+                                                     captcha_typing_delay=delays.get("captcha_typing_delay", 80))
             except Exception as e:
                 logger.error("  ❌ 재시도 캡차 오류: %s", e)
         cs = macro.get("captcha_submit", [0, 0])
@@ -454,7 +456,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         logger.info("  🔍 캡차 처리 중...")
         try:
             solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
-                                         captcha_area=macro.get("captcha_area"))
+                                         captcha_area=macro.get("captcha_area"),
+                                         captcha_typing_delay=delays.get("captcha_typing_delay", 80))
             if solved:
                 logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
                 _wait(1)
@@ -549,7 +552,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             if auto_captcha:
                 try:
                     retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
-                                                       captcha_area=macro.get("captcha_area"))
+                                                       captcha_area=macro.get("captcha_area"),
+                                                       captcha_typing_delay=delays.get("captcha_typing_delay", 80))
                 except Exception as e:
                     logger.error("  ❌ 재시도 캡차 오류: %s", e)
             if retry_solved and (cs[0] != 0 or cs[1] != 0):
@@ -648,7 +652,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 
 def _standalone_captcha(stop_event: Optional[threading.Event] = None,
                         method: str = "oauth",
-                        captcha_area: Optional[list] = None) -> bool:
+                        captcha_area: Optional[list] = None,
+                        captcha_typing_delay: int = 80) -> bool:
     """
     시스템 스크린샷으로 캡차 해결.
     Chrome CDP 없이 pyautogui 전체화면 스크린샷 사용.
@@ -701,9 +706,10 @@ def _standalone_captcha(stop_event: Optional[threading.Event] = None,
         logger.warning("  ⚠️ 캡차 인식 결과 없음 — 건너뜀")
         return False
 
-    # 4. 키보드 입력
-    SystemBot.type_text(captcha_text)
-    time.sleep(0.5)
+    # 4. 키보드 입력 (비정상 빠른입력 방지를 위해 지연+랜덤지터)
+    from .system_bot import SystemBot as _SB
+    _SB.type_text_slow(captcha_text, char_delay_ms=captcha_typing_delay)
+    time.sleep(0.3)
 
     # 5. 엔터
     SystemBot.press("enter")

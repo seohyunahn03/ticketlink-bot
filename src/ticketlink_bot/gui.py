@@ -226,9 +226,30 @@ class TicketlinkGUI(tk.Tk):
         notebook.add(self._zone_frame, text="🏟️ 좌석 영역")
         self._build_zone_tab()
 
-        # 탭 3: 설정
-        self._settings_frame = ttk.Frame(notebook)
-        notebook.add(self._settings_frame, text="⚙️ 설정")
+        # 탭 3: 설정 (스크롤 가능)
+        _settings_outer = ttk.Frame(notebook)
+        notebook.add(_settings_outer, text="⚙️ 설정")
+        _settings_outer.grid_rowconfigure(0, weight=1)
+        _settings_outer.grid_columnconfigure(0, weight=1)
+
+        _canvas = tk.Canvas(_settings_outer, bg=_AppStyle.BG, highlightthickness=0)
+        _scrollbar = ttk.Scrollbar(_settings_outer, orient="vertical", command=_canvas.yview)
+        self._settings_frame = ttk.Frame(_canvas)
+        self._settings_frame.bind(
+            "<Configure>",
+            lambda e: _canvas.configure(scrollregion=_canvas.bbox("all")),
+        )
+        _canvas.create_window((0, 0), window=self._settings_frame, anchor="nw")
+        _canvas.configure(yscrollcommand=_scrollbar.set)
+
+        _canvas.grid(row=0, column=0, sticky="nsew")
+        _scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # 마우스 휠 스크롤 (Canvas 영역 진입/이탈)
+        def _on_mousewheel(event):
+            _canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        _canvas.bind("<Enter>", lambda e: _canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        _canvas.bind("<Leave>", lambda e: _canvas.unbind_all("<MouseWheel>"))
         self._build_settings_tab()
 
         # ── 하단: 로그 + 버튼 ──
@@ -518,6 +539,7 @@ class TicketlinkGUI(tk.Tk):
             ("seat_click", "좌석 딜레이(ms):", "10"),
             ("section_move", "구역 이동 딜레이(ms):", "200"),
             ("refresh", "새로고침 간격(ms):", "500"),
+            ("captcha_typing_delay", "캡차 입력 간격(ms):", "80"),
             ("max_retries", "최대 재시도 횟수:", "30"),
             ("max_screenshot_fails", "최대 스크린샷 실패:", "5"),
         ]
@@ -1016,6 +1038,7 @@ class TicketlinkGUI(tk.Tk):
         self._settings_vars["seat_click"].set(str(delays.get("seat_click", 10)))
         self._settings_vars["section_move"].set(str(delays.get("section_move", 200)))
         self._settings_vars["refresh"].set(str(delays.get("refresh", 500)))
+        self._settings_vars["captcha_typing_delay"].set(str(delays.get("captcha_typing_delay", 80)))
         self._settings_vars["max_retries"].set(str(macro.get("max_retries", 30)))
         self._settings_vars["max_screenshot_fails"].set(str(macro.get("max_screenshot_fails", 5)))
 
@@ -1099,11 +1122,11 @@ class TicketlinkGUI(tk.Tk):
         booking["prefer_seat"] = self._prefer_seat_var.get().strip()
 
         delays = macro.setdefault("delays", {})
-        for k in ("click_wait", "seat_click", "section_move", "refresh"):
+        for k in ("click_wait", "seat_click", "section_move", "refresh", "captcha_typing_delay"):
             try:
                 delays[k] = int(self._settings_vars[k].get())
             except (ValueError, KeyError):
-                delays[k] = {"click_wait": 3, "seat_click": 10, "section_move": 200, "refresh": 500}.get(k, 0)
+                delays[k] = {"click_wait": 3, "seat_click": 10, "section_move": 200, "refresh": 500, "captcha_typing_delay": 80}.get(k, 0)
 
         for k in ("max_retries", "max_screenshot_fails"):
             try:
