@@ -141,6 +141,62 @@ def _fetch_games_from_cdp(product_id: str, cdp_port: int = 9222) -> list[dict]:
         return []
 
 
+def _read_ids_from_cdp(cdp_port: int = 9222) -> dict:
+    """현재 Chrome 페이지 URL/폼에서 경기코드(productId+scheduleId) 읽기
+
+    Args:
+        cdp_port: Chrome CDP 포트
+
+    Returns:
+        {"productId": "62162", "scheduleId": "1492740043", "url": "..."}
+        또는 실패 시 빈 dict
+    """
+    try:
+        from .cdp_hijack import CdpHijack
+        import asyncio
+
+        hijack = CdpHijack(cdp_port=cdp_port)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            ok = loop.run_until_complete(hijack.connect())
+            if not ok:
+                logger.warning("  ⚠️ CDP 연결 실패 (포트 %d)", cdp_port)
+                return {}
+
+            data = loop.run_until_complete(hijack.extract_ids_from_current_page())
+            loop.run_until_complete(hijack.close())
+
+            if not data:
+                return {}
+
+            result = {"_raw": data}
+            # URL에서 scheduleId 우선
+            if data.get("scheduleId_from_url"):
+                result["scheduleId"] = data["scheduleId_from_url"]
+            elif data.get("scheduleId_from_form"):
+                result["scheduleId"] = data["scheduleId_from_form"]
+
+            # URL에서 productId 우선
+            if data.get("productId_from_url"):
+                result["productId"] = data["productId_from_url"]
+            elif data.get("productId_from_form"):
+                result["productId"] = data["productId_from_form"]
+            elif data.get("productId_from_path"):
+                result["productId"] = data["productId_from_path"]
+
+            if result.get("url") or data.get("url"):
+                result["url"] = data.get("url", "")
+
+            return result
+        except Exception:
+            loop.close()
+            raise
+    except Exception as e:
+        logger.error("  ❌ URL 읽기 오류: %s", e)
+        return {}
+
+
 # ================================================================
 #  새로고침 봇 (F6)
 # ================================================================

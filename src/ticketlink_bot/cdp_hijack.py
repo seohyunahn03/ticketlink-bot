@@ -294,7 +294,63 @@ class CdpHijack:
             return result["result"].get("value", {})
         return {"active": False, "error": "verify failed"}
 
-    # ── 경기 목록 스크래핑 ─────────────────────────────────────────
+    # ── 예매 페이지 URL에서 경기코드 추출 ──────────────────────────
+
+    async def extract_ids_from_current_page(self) -> dict:
+        """현재 페이지 URL/폼에서 productId + scheduleId 추출
+
+        Returns:
+            {"productId": "62162", "scheduleId": "1492740043", ...}
+            또는 실패 시 빈 dict
+        """
+        if not self.ws:
+            return {}
+
+        result = await self._send_with_result("Runtime.evaluate", {
+            "expression": r"""(() => {
+                const res = {};
+
+                // 1. URL 파싱
+                const url = window.location.href;
+                res.url = url;
+
+                // URL에서 scheduleId 추출 (?scheduleId=XXX)
+                const sidMatch = url.match(/[?&]scheduleId=(\d+)/);
+                if (sidMatch) res.scheduleId_from_url = sidMatch[1];
+
+                // URL에서 productId 추출 (/reserve/product/XXXXX)
+                const pidMatch = url.match(/\/reserve\/product\/(\d+)/);
+                if (pidMatch) res.productId_from_url = pidMatch[1];
+
+                // 2. 폼 필드에서 읽기
+                const pi = document.querySelector('input[name="productId"]');
+                if (pi) res.productId_from_form = pi.value;
+
+                const si = document.querySelector('input[name="scheduleId"]');
+                if (si) res.scheduleId_from_form = si.value;
+
+                // 3. React/SPA state (경로 파라미터)
+                //    history.pushState / replaceState 로 전달된 값
+                try {
+                    const path = window.location.pathname;
+                    const pathPid = path.match(/\/reserve\/product\/(\d+)/);
+                    if (pathPid) res.productId_from_path = pathPid[1];
+                } catch(e) {}
+
+                // 4. 데이터 버전/타임스탬프
+                const m = document.querySelector('meta[name="build-timestamp"]');
+                if (m) res.build_timestamp = m.content;
+
+                return res;
+            })()
+            """,
+            "returnByValue": True,
+        })
+        if result and "result" in result:
+            return result["result"].get("value", {})
+        return {}
+
+    # ── 경기 목록 스크래핑 (deprecated — 안티봇 차단으로 미작동) ─────
 
     async def navigate(self, url: str, timeout: float = 15.0) -> bool:
         """CDP로 페이지 이동 + 로딩 대기"""
@@ -319,7 +375,10 @@ class CdpHijack:
         return False
 
     async def fetch_games(self, product_id: str) -> list[dict]:
-        """특정 구단의 경기 목록을 CDP로 스크래핑
+        """⚠️ [DEPRECATED] 특정 구단의 경기 목록을 CDP로 스크래핑
+
+        Ticketlink의 API 파라미터 난독화(안티봇)로 인해 작동하지 않습니다.
+        대신 extract_ids_from_current_page()를 사용하세요.
 
         Args:
             product_id: 구단 productId (예: "62162" = 한화)

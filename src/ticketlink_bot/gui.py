@@ -679,9 +679,12 @@ class TicketlinkGUI(tk.Tk):
         self._cdp_schedule_id_var = tk.StringVar(value=hijack.get("schedule_id", ""))
         ttk.Entry(frame, textvariable=self._cdp_schedule_id_var, width=30).grid(
             row=row, column=1, sticky="w", padx=4, pady=2)
-        ttk.Button(frame, text="🎯 경기 불러오기",
-                   command=self._fetch_cdp_games).grid(
-            row=row, column=2, sticky="w", padx=4)
+        btn_sched = ttk.Frame(frame)
+        btn_sched.grid(row=row, column=2, sticky="w", padx=4)
+        ttk.Button(btn_sched, text="🎯 경기 불러오기",
+                   command=self._fetch_cdp_games).pack(side="left", padx=(0, 4))
+        ttk.Button(btn_sched, text="📋 URL에서 읽기",
+                   command=self._read_cdp_url).pack(side="left")
         row += 1
 
         # 설명
@@ -691,7 +694,7 @@ class TicketlinkGUI(tk.Tk):
             row=row, column=0, columnspan=3, sticky="w", padx=8)
         row += 1
         ttk.Label(frame,
-                  text="[경기 불러오기] = CDP 연결 → 구단 페이지에서 경기목록 스크래핑",
+                  text="[경기 불러오기] = 구단목록 / [URL에서 읽기] = 현재 예매페이지 URL 파싱",
                   font=("", 8), foreground="gray").grid(
             row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
         row += 1
@@ -1327,6 +1330,48 @@ class TicketlinkGUI(tk.Tk):
             side="right", padx=10)
         ttk.Button(btn_frame, text="취소",
                    command=win.destroy).pack(side="right", padx=5)
+
+    # ── CDP URL 읽기 ──
+
+    def _read_cdp_url(self):
+        """현재 Chrome 페이지 URL/폼에서 경기코드 읽기"""
+        cdp_port = int(self._cdp_port_var.get() or "9222")
+        threading.Thread(target=self._do_read_cdp_url,
+                         args=(cdp_port,), daemon=True).start()
+
+    def _do_read_cdp_url(self, cdp_port: int):
+        """백그라운드에서 CDP URL 읽기 실행"""
+        try:
+            from .standalone import _read_ids_from_cdp
+            logger.info("📋 Chrome 페이지 URL 읽는 중... (포트 %d)", cdp_port)
+            result = _read_ids_from_cdp(cdp_port=cdp_port)
+
+            if not result:
+                self.after(0, lambda: logger.warning(
+                    "⚠️ URL에서 경기코드를 찾을 수 없습니다.\n"
+                    "Chrome CDP(--remote-debugging-port=%d)가 실행 중이고\n"
+                    "티켓링크 예매 페이지가 열려있는지 확인하세요.", cdp_port))
+                return
+
+            pid = result.get("productId", "")
+            sid = result.get("scheduleId", "")
+            url = result.get("url", "")
+
+            # UI 업데이트
+            if pid:
+                self._cdp_product_id_var.set(pid)
+            if sid:
+                self._cdp_schedule_id_var.set(sid)
+
+            msg = f"✅ URL 읽기 완료: productId={pid}, scheduleId={sid}"
+            if "예매 가능한 경기가 없습니다" in url or "예매" not in url:
+                msg += "\n  ⚠️ 예매 페이지가 맞는지 확인하세요"
+            self.after(0, lambda: logger.info(msg))
+
+        except Exception as e:
+            logger.error("❌ URL 읽기 오류: %s", e)
+            self.after(0, lambda: logger.warning(
+                "⚠️ 오류: %s\nChrome CDP(--remote-debugging-port)가 실행 중인지 확인", e))
 
     # ── 이중봇 실행 ──
 
