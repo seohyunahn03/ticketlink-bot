@@ -23,6 +23,7 @@ DEFAULT_CONFIG = {
         "ticket_count": 2,
         "prefer_seat": "",
         "auto_captcha": True,
+        "server_time": "",  # "10:00:00" 형식 — 새로고침 봇용
         "default_url": "https://www.ticketlink.co.kr/sports/137/59",
     },
     # xAI (캡차)
@@ -38,6 +39,7 @@ DEFAULT_CONFIG = {
         "click3": [0, 0],       # 선택완료 좌표
         "click4": [0, 0],       # 결제하기 좌표
         "captcha_submit": [0, 0],  # 보안문자 입력 확인 버튼 좌표
+        "captcha_input": [0, 0],   # 보안문자 입력창 좌표 (매크로봇용)
         "date_click": [0, 0],   # 날짜 좌표 (선택)
         "round_click": [0, 0],  # 회차 좌표 (선택)
         "section_click": [0, 0],# 구역선택 좌표 (선택)

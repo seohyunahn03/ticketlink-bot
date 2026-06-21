@@ -120,6 +120,12 @@ class TicketlinkGUI(tk.Tk):
         self._running = False
         self._bot_ref = None  # Bot 인스턴스 참조
 
+        # 이중봇 상태 (F6=새로고침, F7=매크로)
+        self._refresh_running = False
+        self._macro_running = False
+        self._refresh_stop_event = threading.Event()
+        self._macro_stop_event = threading.Event()
+
         # 스타일
         _AppStyle.apply_theme(self)
 
@@ -141,8 +147,8 @@ class TicketlinkGUI(tk.Tk):
         # 중지 이벤트 (매크로 강제 중지용)
         self._stop_event = threading.Event()
 
-        # 상태바 초기화 (항상 독립형)
-        self._statusbar.configure(text=" [F6] 실행/중지  |  [ESC] 종료  |  모드: 독립형")
+        # 상태바 초기화
+        self._statusbar.configure(text=" [F6] 새로고침봇  |  [F7] 매크로봇  |  [ESC] 종료")
 
     # ── 메뉴 ──
 
@@ -248,29 +254,43 @@ class TicketlinkGUI(tk.Tk):
         self._log_handler = _LogHandler(self._log_text)
         logging.getLogger("ticketlink_bot").addHandler(self._log_handler)
 
-        # 제어 버튼
+        # 제어 버튼 (이중봇: F6=새로고침, F7=매크로)
         btn_row = ttk.Frame(bottom)
         btn_row.grid(row=1, column=0, sticky="ew")
-        btn_row.grid_columnconfigure(2, weight=1)
+        btn_row.grid_columnconfigure(4, weight=1)
 
-        self._start_btn = ttk.Button(
-            btn_row, text="▶ 시작 (F6)", style="Success.TButton",
-            command=self._start_macro,
+        # 새로고침 봇 (F6)
+        self._refresh_btn = ttk.Button(
+            btn_row, text="🔄 새로고침 (F6)", style="Success.TButton",
+            command=self._toggle_refresh,
         )
-        self._start_btn.grid(row=0, column=0, padx=(0, 4))
+        self._refresh_btn.grid(row=0, column=0, padx=(0, 4))
 
-        self._stop_btn = ttk.Button(
-            btn_row, text="⏹ 중지", style="Danger.TButton",
-            command=self._stop_macro, state="disabled",
+        # 매크로 봇 (F7)
+        self._macro_btn = ttk.Button(
+            btn_row, text="⚡ 매크로 (F7)", style="Accent.TButton",
+            command=self._toggle_macro,
         )
-        self._stop_btn.grid(row=0, column=1, padx=(0, 8))
+        self._macro_btn.grid(row=0, column=1, padx=(0, 4))
 
+        # 전체 중지
+        self._stop_all_btn = ttk.Button(
+            btn_row, text="⏹ 전체 중지", style="Danger.TButton",
+            command=self._stop_all,
+        )
+        self._stop_all_btn.grid(row=0, column=2, padx=(0, 8))
+
+        # 상태 레이블
         self._status_label = ttk.Label(btn_row, text="⏸ 대기중", font=_AppStyle.FONT)
-        self._status_label.grid(row=0, column=2, sticky="w")
+        self._status_label.grid(row=0, column=3, sticky="w", padx=(0, 4))
+
+        # 개별 상태 표시 (작은 텍스트)
+        self._refresh_status_label = ttk.Label(btn_row, text="", font=_AppStyle.FONT_SMALL, foreground=_AppStyle.SURFACE2)
+        self._refresh_status_label.grid(row=0, column=4, sticky="w")
 
         # 상태바
         self._statusbar = ttk.Label(
-            bottom, text=" [F6] 실행/중지  |  [ESC] 종료",
+            bottom, text=" [F6] 새로고침봇  |  [F7] 매크로봇  |  [ESC] 종료",
             font=_AppStyle.FONT_SMALL, foreground=_AppStyle.SURFACE2,
         )
         self._statusbar.grid(row=2, column=0, sticky="ew", pady=(4, 0))
@@ -286,11 +306,12 @@ class TicketlinkGUI(tk.Tk):
             ("click1", "1️⃣ 예매하기"),
             ("click2", "2️⃣ 확인 (예매안내 모달)"),
             ("captcha_submit", "3️⃣ 보안문자 확인 버튼"),
-            ("section_click", "4️⃣ 구역선택 (선택)"),
-            ("click3", "5️⃣ 선택완료"),
-            ("click4", "6️⃣ 결제하기 (선택)"),
-            ("date_click", "7️⃣ 날짜 선택 (선택)"),
-            ("round_click", "8️⃣ 회차 선택 (선택)"),
+            ("captcha_input", "4️⃣ 보안문자 입력창 (매크로봇용)"),
+            ("section_click", "5️⃣ 구역선택 (선택)"),
+            ("click3", "6️⃣ 선택완료"),
+            ("click4", "7️⃣ 결제하기 (선택)"),
+            ("date_click", "8️⃣ 날짜 선택 (선택)"),
+            ("round_click", "9️⃣ 회차 선택 (선택)"),
         ]
 
         self._coord_vars = {}
@@ -414,6 +435,7 @@ class TicketlinkGUI(tk.Tk):
         fields = [
             ("team", "응원 팀:", self._cfg.get("booking", {}).get("team", "LG")),
             ("ticket_count", "매수:", str(self._cfg.get("booking", {}).get("ticket_count", 2))),
+            ("server_time", "서버시간 (HH:MM:SS):", self._cfg.get("booking", {}).get("server_time", "")),
             ("click_wait", "클릭 후 대기(초):", "3"),
             ("seat_click", "좌석 딜레이(ms):", "500"),
             ("refresh", "새로고침 간격(ms):", "2000"),
@@ -730,6 +752,7 @@ class TicketlinkGUI(tk.Tk):
         booking = self._cfg.get("booking", {})
         self._settings_vars["team"].set(booking.get("team", "LG"))
         self._settings_vars["ticket_count"].set(str(booking.get("ticket_count", 2)))
+        self._settings_vars["server_time"].set(booking.get("server_time", ""))
         delays = macro.get("delays", {})
         self._settings_vars["click_wait"].set(str(delays.get("click_wait", 3)))
         self._settings_vars["seat_click"].set(str(delays.get("seat_click", 500)))
@@ -795,6 +818,7 @@ class TicketlinkGUI(tk.Tk):
             booking["ticket_count"] = int(self._settings_vars["ticket_count"].get())
         except ValueError:
             booking["ticket_count"] = 2
+        booking["server_time"] = self._settings_vars["server_time"].get().strip()
 
         delays = macro.setdefault("delays", {})
         for k in ("click_wait", "seat_click", "refresh"):
@@ -810,56 +834,96 @@ class TicketlinkGUI(tk.Tk):
         xai_cfg["model"] = self._xai_model_var.get()
         booking["auto_captcha"] = self._auto_captcha_var.get()
 
-    # ── 매크로 실행 ──
+    # ── 이중봇 실행 ──
 
-    def _start_macro(self):
-        """매크로 시작"""
+    def _toggle_refresh(self):
+        """F6: 새로고침 봇 시작/중지"""
+        if self._refresh_running:
+            self._stop_refresh()
+        else:
+            self._start_refresh()
+
+    def _start_refresh(self):
+        """새로고침 봇 시작"""
         self._collect_ui_to_cfg()
-        self._running = True
-        self._stop_event.clear()
-        self._start_btn.configure(state="disabled", text="▶ 실행중...")
-        self._stop_btn.configure(state="normal")
-        self._status_label.configure(text="🟢 실행중", foreground=_AppStyle.SUCCESS)
+        self._refresh_running = True
+        self._refresh_stop_event.clear()
+        self._refresh_btn.configure(state="disabled", text="🔄 새로고침중...")
+        self._status_label.configure(text="🟢 새로고침봇 실행중", foreground=_AppStyle.SUCCESS)
+        self._refresh_status_label.configure(text="[F6] 🔄", foreground=_AppStyle.SUCCESS)
+        threading.Thread(target=self._run_refresh_bot, daemon=True).start()
 
-        threading.Thread(target=self._run_macro, daemon=True).start()
+    def _stop_refresh(self):
+        """새로고침 봇 중지"""
+        self._refresh_running = False
+        self._refresh_stop_event.set()
+        self._refresh_btn.configure(state="normal", text="🔄 새로고침 (F6)")
+        self._refresh_status_label.configure(text="")
+        if not self._macro_running:
+            self._status_label.configure(text="⏸ 대기중", foreground=_AppStyle.FG)
 
-    def _stop_macro(self):
-        """매크로 중지"""
-        self._running = False
-        self._stop_event.set()
-        self._start_btn.configure(state="normal", text="▶ 시작 (F6)")
-        self._stop_btn.configure(state="disabled")
-        self._status_label.configure(text="⏸ 중지됨", foreground=_AppStyle.WARN)
+    def _toggle_macro(self):
+        """F7: 매크로 봇 시작/중지"""
+        if self._macro_running:
+            self._stop_macro_bot()
+        else:
+            self._start_macro_bot()
 
-    def _run_macro(self):
-        """별도 스레드에서 매크로 실행"""
+    def _start_macro_bot(self):
+        """매크로 봇 시작"""
+        self._collect_ui_to_cfg()
+        self._macro_running = True
+        self._macro_stop_event.clear()
+        self._macro_btn.configure(state="disabled", text="⚡ 매크로중...")
+        self._status_label.configure(text="🟢 매크로봇 실행중", foreground=_AppStyle.SUCCESS)
+        self._refresh_status_label.configure(text="[F7] ⚡", foreground=_AppStyle.ACCENT)
+        threading.Thread(target=self._run_macro_bot, daemon=True).start()
+
+    def _stop_macro_bot(self):
+        """매크로 봇 중지"""
+        self._macro_running = False
+        self._macro_stop_event.set()
+        self._macro_btn.configure(state="normal", text="⚡ 매크로 (F7)")
+        self._refresh_status_label.configure(text="")
+        if not self._refresh_running:
+            self._status_label.configure(text="⏸ 대기중", foreground=_AppStyle.FG)
+
+    def _stop_all(self):
+        """전체 중지"""
+        self._stop_refresh()
+        self._stop_macro_bot()
+
+    def _run_refresh_bot(self):
+        """별도 스레드: 새로고침 봇"""
         try:
-            # ── 독립형 모드 (Chrome/CDP 불필요) ──
-            logger.info("🚀 독립형 매크로 시작 (Chrome 불필요)")
-            from .standalone import standalone_book
-            result = standalone_book(self._cfg, stop_event=self._stop_event)
-
+            from .standalone import refresh_bot
+            result = refresh_bot(self._cfg, stop_event=self._refresh_stop_event)
             if result.get("success"):
-                self.after(0, lambda: self._status_label.configure(
-                    text="✅ 성공!", foreground=_AppStyle.SUCCESS))
-                logger.info("🎉 %s", result.get("message", ""))
+                logger.info("✅ 새로고침 봇 완료: %s", result.get("message", ""))
             else:
-                self.after(0, lambda: self._status_label.configure(
-                    text="⚠️ 실패", foreground=_AppStyle.ERROR))
-                logger.warning("⚠️ %s", result.get("message", ""))
+                logger.warning("⚠️ 새로고침 봇: %s", result.get("message", ""))
         except Exception as e:
-            logger.error("❌ 매크로 오류: %s", e)
+            logger.error("❌ 새로고침 봇 오류: %s", e)
             import traceback
             traceback.print_exc()
         finally:
-            self.after(0, self._reset_after_macro)
+            self.after(0, self._stop_refresh)
 
-    def _reset_after_macro(self):
-        """매크로 종료 후 UI 리셋 (상태 레이블 유지)"""
-        self._running = False
-        self._stop_event.set()
-        self._start_btn.configure(state="normal", text="▶ 시작 (F6)")
-        self._stop_btn.configure(state="disabled")
+    def _run_macro_bot(self):
+        """별도 스레드: 매크로 봇"""
+        try:
+            from .standalone import macro_bot
+            result = macro_bot(self._cfg, stop_event=self._macro_stop_event)
+            if result.get("success"):
+                logger.info("🎉 매크로 봇 완료: %s", result.get("message", ""))
+            else:
+                logger.warning("⚠️ 매크로 봇: %s", result.get("message", ""))
+        except Exception as e:
+            logger.error("❌ 매크로 봇 오류: %s", e)
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after(0, self._stop_macro_bot)
 
     # ── 도구 메뉴 ──
 
@@ -888,11 +952,13 @@ class TicketlinkGUI(tk.Tk):
             "🎫 티켓링크봇 — KBO 야구 예매 자동화\n\n"
             "1. 좌표 설정: 각 버튼의 위치를 '따기' 버튼으로 설정\n"
             "2. 좌석 영역: 빈 좌석의 색상과 검색 영역 설정\n"
-            "3. '시작' 버튼 또는 F6 키로 매크로 실행\n\n"
+            "3. 새로고침봇(F6) → 예매하기 + 확인까지 자동\n"
+            "4. 매크로봇(F7) → 캡차 + 좌석검색 + 결제까지 자동\n\n"
             "🎯 좌표 따기:\n"
             "  - '글로벌' 버튼 → 화면 어디서나 우클릭\n\n"
             "⌨️ 단축키:\n"
-            "  F6: 실행/중지 토글\n"
+            "  F6: 새로고침 봇 시작/중지\n"
+            "  F7: 매크로 봇 시작/중지\n"
             "  ESC: 종료"
         )
 
@@ -908,13 +974,15 @@ class TicketlinkGUI(tk.Tk):
     # ── 글로벌 핫키 ──
 
     def _init_hotkeys(self):
-        """pynput 글로벌 키보드 리스너 (F6/ESC)"""
+        """pynput 글로벌 키보드 리스너 (F6/F7/ESC)"""
         try:
             from pynput import keyboard as _kb
             def _on_press(key):
                 try:
                     if key == _kb.Key.f6:
-                        self.after(0, self._toggle_start_stop)
+                        self.after(0, self._toggle_refresh)
+                    elif key == _kb.Key.f7:
+                        self.after(0, self._toggle_macro)
                     elif key == _kb.Key.esc:
                         self.after(0, self._on_close)
                 except Exception:
@@ -922,26 +990,24 @@ class TicketlinkGUI(tk.Tk):
             self._hotkey_listener = _kb.Listener(on_press=_on_press)
             self._hotkey_listener.daemon = True
             self._hotkey_listener.start()
-            logger.info("⌨️ 글로벌 핫키: F6=시작/중지, ESC=종료")
+            logger.info("⌨️ 글로벌 핫키: F6=새로고침봇, F7=매크로봇, ESC=종료")
         except ImportError:
             logger.info("  pynput 미설치 — 글로벌 핫키 미지원")
         except Exception as e:
             logger.debug("  핫키 초기화 실패: %s", e)
 
     def _toggle_start_stop(self):
-        """F6 핫키: 실행중이면 중지, 중지면 시작"""
-        if self._running:
-            self._stop_macro()
-        else:
-            self._start_macro()
+        """(deprecated) F6 핫키 → _toggle_refresh 로 대체"""
+        self._toggle_refresh()
 
     # ── 종료 ──
 
     def _on_close(self):
         """프로그램 종료"""
-        if self._running:
-            if not messagebox.askyesno("종료 확인", "매크로가 실행 중입니다. 종료할까요?"):
+        if self._refresh_running or self._macro_running:
+            if not messagebox.askyesno("종료 확인", "봇이 실행 중입니다. 종료할까요?"):
                 return
+        self._stop_all()
         if self._hotkey_listener:
             self._hotkey_listener.stop()
         self._save_preset(self._current_preset)
