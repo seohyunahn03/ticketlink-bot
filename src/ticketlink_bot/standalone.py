@@ -277,8 +277,8 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
                 return result
             _reload_page(0.05)  # 50ms 간격 F5
         # F5 스팸 종료 → 페이지 로딩 대기
-        logger.info("  ⏳ 페이지 로딩 대기 중... (0.5초)")
-        time.sleep(0.5)
+        logger.info("  ⏳ 페이지 로딩 대기 중... (1초)")
+        time.sleep(1.0)
     else:
         # 서버시간 없음: 그냥 한 번 F5
         logger.info("  🔄 서버시간 미설정 — 기본 새로고침")
