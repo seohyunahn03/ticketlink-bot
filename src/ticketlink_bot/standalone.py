@@ -47,8 +47,8 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
     result = {"success": False, "stage": "refresh", "message": ""}
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
-    click_wait = delays.get("click_wait", 3)
-    refresh_delay = delays.get("refresh", 500) / 1000.0
+    click_wait = delays.get("click_wait", 1500) / 1000.0
+    refresh_delay = delays.get("refresh", 300) / 1000.0
 
     c1 = macro.get("click1", [0, 0])
     if c1[0] == 0 and c1[1] == 0:
@@ -126,10 +126,10 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
     rc = macro.get("round_click", [0, 0])
     if dc[0] != 0 or dc[1] != 0:
         _click(dc[0], dc[1], "날짜선택")
-        _wait(1)
+        _wait(0.5)
     if rc[0] != 0 or rc[1] != 0:
         _click(rc[0], rc[1], "회차선택")
-        _wait(1)
+        _wait(0.5)
 
     # ── 확인 (예매안내 모달) ──
     c2 = macro.get("click2", [0, 0])
@@ -165,10 +165,10 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     result = {"success": False, "stage": "macro", "message": ""}
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
-    click_wait = delays.get("click_wait", 3)
+    click_wait = delays.get("click_wait", 1500) / 1000.0
     seat_click_delay = delays.get("seat_click", 10) / 1000.0
-    refresh_delay = delays.get("refresh", 500) / 1000.0
-    section_move = delays.get("section_move", 200) / 1000.0
+    refresh_delay = delays.get("refresh", 300) / 1000.0
+    section_move = delays.get("section_move", 100) / 1000.0
 
     max_retries = macro.get("max_retries", 30)
     max_screenshot_fails = macro.get("max_screenshot_fails", 5)
@@ -197,16 +197,16 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         ci = macro.get("captcha_input", [0, 0])
         if ci[0] != 0 or ci[1] != 0:
             _click(ci[0], ci[1], "캡차 입력창")
-            _wait(0.3)
+            _wait(0.1)
 
         logger.info("  🔍 캡차 처리 중...")
         try:
             solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
                                          captcha_area=macro.get("captcha_area"),
-                                         captcha_typing_delay=delays.get("captcha_typing_delay", 80))
+                                         captcha_typing_delay=delays.get("captcha_typing_delay", 15))
             if solved:
                 logger.info("  ✅ 캡차 입력 완료")
-                _wait(1)
+                _wait(0.5)
             else:
                 logger.warning("  ⚠️ 캡차 해결 실패, 계속 진행")
         except Exception as e:
@@ -275,10 +275,10 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
             _wait(click_wait)
         if dc[0] != 0 or dc[1] != 0:
             _click(dc[0], dc[1], "날짜선택(재시도)")
-            _wait(1)
+            _wait(0.5)
         if rc[0] != 0 or rc[1] != 0:
             _click(rc[0], rc[1], "회차선택(재시도)")
-            _wait(1)
+            _wait(0.5)
         if c2[0] != 0 or c2[1] != 0:
             _click(c2[0], c2[1], "확인")
             _wait(click_wait)
@@ -288,11 +288,11 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
             ci = macro.get("captcha_input", [0, 0])
             if ci[0] != 0 or ci[1] != 0:
                 _click(ci[0], ci[1], "캡차 입력창(재시도)")
-                _wait(0.3)
+                _wait(0.1)
             try:
                 retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
                                                      captcha_area=macro.get("captcha_area"),
-                                                     captcha_typing_delay=delays.get("captcha_typing_delay", 80))
+                                                     captcha_typing_delay=delays.get("captcha_typing_delay", 15))
             except Exception as e:
                 logger.error("  ❌ 재시도 캡차 오류: %s", e)
         # 재시도 시에도 전처리 다시 실행
@@ -320,9 +320,9 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
             return result
-        _wait(1)
+        _wait(0.5)
         _click(c3[0], c3[1], "선택완료")
-        _wait(2)
+        _wait(0.5)
 
     # ── 결제하기 ──
     c4 = macro.get("click4", [0, 0])
@@ -330,7 +330,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
             return result
-        _wait(1)
+        _wait(0.5)
         _click(c4[0], c4[1], "결제하기")
         result["stage"] = "payment"
         result["message"] = "✅ 예매 완료! 결제 페이지로 이동했습니다."
@@ -349,7 +349,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
 # ================================================================
 
 def _do_preroll(macro: dict, delays: dict, stop_event=None,
-                section_move=0.2, click_wait=3) -> bool:
+                section_move=0.1, click_wait=1.5) -> bool:
     """구역선택 → 직접선택 → 안내창확인 (좌석검색 전에 실행)
 
     Returns:
@@ -369,7 +369,7 @@ def _do_preroll(macro: dict, delays: dict, stop_event=None,
     if ds[0] != 0 or ds[1] != 0:
         if stop_event and stop_event.is_set():
             return False
-        _wait(1)
+        _wait(0.5)
         _click(ds[0], ds[1], "직접선택")
         _wait(click_wait)
 
@@ -378,7 +378,7 @@ def _do_preroll(macro: dict, delays: dict, stop_event=None,
     if cg[0] != 0 or cg[1] != 0:
         if stop_event and stop_event.is_set():
             return False
-        _wait(1)
+        _wait(0.5)
         _click(cg[0], cg[1], "안내창 확인")
         _wait(click_wait)
 
@@ -403,10 +403,10 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     result = {"success": False, "stage": "init", "message": ""}
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
-    click_wait = delays.get("click_wait", 3)
+    click_wait = delays.get("click_wait", 1500) / 1000.0
     seat_click_delay = delays.get("seat_click", 10) / 1000.0
-    refresh_delay = delays.get("refresh", 500) / 1000.0
-    section_move = delays.get("section_move", 200) / 1000.0
+    refresh_delay = delays.get("refresh", 300) / 1000.0
+    section_move = delays.get("section_move", 100) / 1000.0
     # 매크로 제어값 (설정 가능, 기본값은 config.py DEFAULT_CONFIG 참조)
     max_retries = macro.get("max_retries", 30)
     max_screenshot_fails = macro.get("max_screenshot_fails", 5)
@@ -438,10 +438,10 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     rc = macro.get("round_click", [0, 0])
     if dc[0] != 0 or dc[1] != 0:
         _click(dc[0], dc[1], "날짜선택")
-        _wait(1)
+        _wait(0.5)
     if rc[0] != 0 or rc[1] != 0:
         _click(rc[0], rc[1], "회차선택")
-        _wait(1)
+        _wait(0.5)
 
     # ===== 2. 확인 클릭 =====
     c2 = macro.get("click2", [0, 0])
@@ -465,10 +465,10 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         try:
             solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
                                          captcha_area=macro.get("captcha_area"),
-                                         captcha_typing_delay=delays.get("captcha_typing_delay", 80))
+                                         captcha_typing_delay=delays.get("captcha_typing_delay", 15))
             if solved:
                 logger.info("  ✅ 캡차 입력 완료 (서버 검증 대기)")
-                _wait(1)
+                _wait(0.5)
             else:
                 logger.warning("  ⚠️ 캡차 해결 실패, 계속 진행")
         except Exception as e:
@@ -548,10 +548,10 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             _wait(click_wait)
             if dc[0] != 0 or dc[1] != 0:
                 _click(dc[0], dc[1], "날짜선택(재시도)")
-                _wait(1)
+                _wait(0.5)
             if rc[0] != 0 or rc[1] != 0:
                 _click(rc[0], rc[1], "회차선택(재시도)")
-                _wait(1)
+                _wait(0.5)
             if c2[0] != 0 or c2[1] != 0:
                 _click(c2[0], c2[1], "확인")
                 _wait(click_wait)
@@ -561,7 +561,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 try:
                     retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
                                                        captcha_area=macro.get("captcha_area"),
-                                                       captcha_typing_delay=delays.get("captcha_typing_delay", 80))
+                                                       captcha_typing_delay=delays.get("captcha_typing_delay", 15))
                 except Exception as e:
                     logger.error("  ❌ 재시도 캡차 오류: %s", e)
             # 재시도 시에도 전처리 다시 실행
@@ -594,9 +594,9 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             result["message"] = "⏹️ 사용자 중지"
             logger.warning("  ⏹️ %s", result["message"])
             return result
-        _wait(1)
+        _wait(0.5)
         _click(c3[0], c3[1], "선택완료")
-        _wait(2)
+        _wait(0.5)
 
     # ===== 6. 결제하기 =====
     c4 = macro.get("click4", [0, 0])
@@ -605,7 +605,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             result["message"] = "⏹️ 사용자 중지"
             logger.warning("  ⏹️ %s", result["message"])
             return result
-        _wait(1)
+        _wait(0.5)
         _click(c4[0], c4[1], "결제하기")
         result["stage"] = "payment"
         result["message"] = "✅ 예매 완료! 결제 페이지로 이동했습니다."
@@ -626,7 +626,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 def _standalone_captcha(stop_event: Optional[threading.Event] = None,
                         method: str = "oauth",
                         captcha_area: Optional[list] = None,
-                        captcha_typing_delay: int = 80) -> bool:
+                        captcha_typing_delay: int = 15) -> bool:
     """
     시스템 스크린샷으로 캡차 해결.
     Chrome CDP 없이 pyautogui 전체화면 스크린샷 사용.
@@ -682,11 +682,11 @@ def _standalone_captcha(stop_event: Optional[threading.Event] = None,
     # 4. 키보드 입력 (비정상 빠른입력 방지를 위해 지연+랜덤지터)
     from .system_bot import SystemBot as _SB
     _SB.type_text_slow(captcha_text, char_delay_ms=captcha_typing_delay)
-    # 5. 사람처럼 Enter 누르기 전에 잠시 망설임 (0.3~0.8초)
+    # 5. 사람처럼 Enter 누르기 전에 잠시 망설임 (0.1~0.3초)
     import random as _rand
-    time.sleep(_rand.uniform(0.3, 0.8))
+    time.sleep(_rand.uniform(0.1, 0.3))
     SystemBot.press("enter")
-    time.sleep(0.5)
+    time.sleep(0.2)
     return True
 
 
@@ -711,5 +711,5 @@ def _click(x: int, y: int, label: str = ""):
 
 def _wait(t: float):
     """대기 + 로그"""
-    logger.debug("  ⏳ %d초 대기...", t)
+    logger.debug("  ⏳ %.1f초 대기...", t)
     time.sleep(t)
