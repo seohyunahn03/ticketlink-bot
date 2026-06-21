@@ -147,6 +147,9 @@ class TicketlinkGUI(tk.Tk):
         # 중지 이벤트 (매크로 강제 중지용)
         self._stop_event = threading.Event()
 
+        # 서버시간 오프셋 (HTTP Date 헤더 측정값, 초 단위)
+        self._server_offset = 0.0
+
         # 상태바 초기화
         self._statusbar.configure(text=" [F6] 새로고침봇  |  [F7] 매크로봇  |  [ESC] 종료")
 
@@ -547,9 +550,13 @@ class TicketlinkGUI(tk.Tk):
         api_type_combo = ttk.Combobox(frame, textvariable=self._xai_api_type_var,
                                       values=api_types, width=10, state="readonly")
         api_type_combo.grid(row=row, column=1, sticky="w", padx=4, pady=2)
+        # OAuth 로그인 버튼 (api_type 바로 옆에 배치)
+        self._xai_oauth_btn = ttk.Button(frame, text="🔐 xAI OAuth 로그인",
+                                         command=self._start_xai_oauth)
+        self._xai_oauth_btn.grid(row=row, column=2, sticky="w", padx=4, pady=2)
         ttk.Label(frame, text="oauth=PKCE 인증 (추천) / vision=API 키 직접",
                   font=("", 8), foreground="gray").grid(
-            row=row, column=2, sticky="w", padx=4, pady=2)
+            row=row, column=3, sticky="w", padx=4, pady=2)
         row += 1
 
         # xai_api_key (선택, 감춰진 입력)
@@ -575,15 +582,6 @@ class TicketlinkGUI(tk.Tk):
         model_combo = ttk.Combobox(frame, textvariable=self._xai_model_var,
                                    values=models, width=20, state="readonly")
         model_combo.grid(row=row, column=1, sticky="w", padx=4, pady=2)
-        row += 1
-
-        # OAuth 로그인 버튼
-        ttk.Button(frame, text="🔐 xAI OAuth 로그인 (브라우저)",
-                   command=self._start_xai_oauth).grid(
-            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=6)
-        ttk.Label(frame, text="OAuth 인증이 필요하면 버튼을 눌러 브라우저에서 xAI 로그인하세요.",
-                  font=("", 8), foreground="gray").grid(
-            row=row, column=2, sticky="w", padx=4)
         row += 1
 
         ttk.Label(frame, text="vision 모드: XAI_API_KEY 환경변수 또는 위 API 키 필드 사용",
@@ -632,73 +630,131 @@ class TicketlinkGUI(tk.Tk):
         threading.Thread(target=self._do_fetch_server_time, daemon=True).start()
 
     def _do_fetch_server_time(self):
-        """백그라운드에서 HTML 파싱하여 서버시간 추출"""
+        """백그라운드에서 HTTP Date 헤더 기반 서버시간 동기화
+
+        1) URL에 GET/HEAD 요청 → Date 헤더로 서버시간 측정
+        2) RTT 고려해 offset 보정 (다중 요청)
+        3) 필요시 HTML에서 예매시작시간 파싱 시도 (fallback)
+        """
         url = self._default_url_var.get().strip()
         if not url or not url.startswith("http"):
             logger.warning("⚠️ 올바른 예매 URL을 먼저 입력하세요.")
             return
 
-        logger.info("🔍 서버시간 확인 중: %s", url)
+        logger.info("🔍 서버시간 측정 중: %s", url)
         try:
+            import time as _time
             import urllib.request
             import re
-            import json
+            from datetime import datetime, timedelta, timezone
 
-            req = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                                   "AppleWebKit/537.36"),
-                    "Accept": "text/html,application/json,*/*",
-                },
-            )
-            resp = urllib.request.urlopen(req, timeout=15)
-            html = resp.read().decode("utf-8", errors="replace")
+            # ── 1단계: HTTP Date 헤더로 서버시간 오프셋 측정 ──
+            def _get_server_date_epoch(req_url: str) -> tuple[float, float]:
+                """HEAD 요청 → 서버 Date 헤더 epoch + RTT 반환"""
+                t0 = _time.time()
+                req = urllib.request.Request(
+                    req_url, method="HEAD",
+                    headers={
+                        "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                       "AppleWebKit/537.36"),
+                        "Accept": "*/*",
+                    },
+                )
+                resp = urllib.request.urlopen(req, timeout=10)
+                rtt = _time.time() - t0
+                date_str = resp.headers.get("Date")
+                if not date_str:
+                    raise RuntimeError("Date 헤더 없음")
+                # "Thu, 25 Jun 2026 10:00:00 GMT"
+                dt = datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %Z")
+                server_epoch = dt.replace(tzinfo=timezone.utc).timestamp()
+                return server_epoch, rtt
 
-            # 1) JSON-LD / structured data에서 bookingPeriod 검색
-            found_time = None
+            # 다중 요청 → 최소 RTT 기준 offset 채택
+            offsets: list[tuple[float, float]] = []  # (offset, rtt)
+            for i in range(5):
+                try:
+                    srv_epoch, rtt = _get_server_date_epoch(url)
+                    local_epoch = _time.time()
+                    offset = srv_epoch - local_epoch
+                    offsets.append((offset, rtt))
+                    logger.debug("  📡 #%d: offset=%.3fs  rtt=%.1fms", i+1, offset, rtt*1000)
+                except Exception as e:
+                    logger.debug("  📡 #%d 실패: %s", i+1, e)
+                _time.sleep(0.3)
 
-            # "bookingPeriod": "2026-06-25T10:00:00" 패턴
-            m = re.search(r'"bookingPeriod"\s*:\s*"([^"]+)"', html)
-            if m:
-                found_time = m.group(1)
+            if not offsets:
+                raise RuntimeError("서버 응답 없음 (Date 헤더를 받지 못함)")
 
-            # 2) "2026-06-21 10:00" 형식의 시간 패턴
-            if not found_time:
-                m = re.search(r'(\d{4}[-/]\d{2}[-/]\d{2})\s+(\d{2}:\d{2})', html)
+            # 최소 RTT(가장 정확한) offset 사용
+            best_offset = min(offsets, key=lambda x: x[1])[0]
+            server_now_epoch = _time.time() + best_offset
+
+            # ── 2단계: HTML에서 예매시작시간 파싱 시도 ──
+            found_booking_time = None
+            try:
+                html_req = urllib.request.Request(
+                    url, method="GET",
+                    headers={
+                        "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                       "AppleWebKit/537.36"),
+                        "Accept": "text/html,application/json,*/*",
+                    },
+                )
+                html_resp = urllib.request.urlopen(html_req, timeout=10)
+                html = html_resp.read().decode("utf-8", errors="replace")
+
+                # a) JSON-LD bookingPeriod
+                m = re.search(r'"bookingPeriod"\s*:\s*"([^"]+)"', html)
                 if m:
-                    found_time = f"{m.group(2)}:00"
+                    found_booking_time = m.group(1)
+                # b) 날짜+시간 패턴
+                if not found_booking_time:
+                    m = re.search(r'(\d{4}[-/]\d{2}[-/]\d{2})\s+(\d{2}:\d{2})', html)
+                    if m:
+                        found_booking_time = f"{m.group(2)}:00"
+                # c) 키워드 근접 시간
+                if not found_booking_time:
+                    for kw in ["예매", "오픈", "시작", "open", "booking"]:
+                        idx = html.lower().find(kw)
+                        if idx >= 0:
+                            m = re.search(r'(\d{2}:\d{2}(?::\d{2})?)', html[idx:idx+200])
+                            if m:
+                                found_booking_time = m.group(1)
+                                break
+            except Exception:
+                pass  # HTML 파싱 실패 → 무시
 
-            # 3) "10:00" 단순 시간 패턴 (티켓오픈, 예매시작 근처)
-            if not found_time:
-                # "예매시작" 또는 "오픈" 근처에서 HH:MM 찾기
-                for keyword in ["예매", "오픈", "시작", "open", "booking"]:
-                    idx = html.lower().find(keyword)
-                    if idx >= 0:
-                        snippet = html[idx:idx+200]
-                        m = re.search(r'(\d{2}:\d{2}(?::\d{2})?)', snippet)
-                        if m:
-                            found_time = m.group(1)
-                            break
+            # ── 3단계: 오프셋 저장 + 결과 표시 ──
+            # 오프셋 저장 (bot이 사용)
+            self._server_offset = best_offset
+            self._cfg.setdefault("booking", {})["server_time_offset"] = round(best_offset, 3)
 
-            if found_time:
-                # T포함이면 T 기준으로 자르기
-                if "T" in found_time:
-                    found_time = found_time.split("T")[1]
-                # 초 없으면 :00 추가
-                if found_time.count(":") == 1:
-                    found_time = f"{found_time}:00"
+            # 현재 서버시간 표시
+            server_dt = datetime.fromtimestamp(server_now_epoch)
+            server_hhmmss = server_dt.strftime("%H:%M:%S")
+            logger.info("🕐 현재 서버시간: %s (offset=%.0fms, RTT=%.1fms)",
+                        server_hhmmss,
+                        best_offset * 1000,
+                        min(o[1] for o in offsets) * 1000)
 
-                self.after(0, lambda: self._server_time_var.set(found_time))
-                logger.info("✅ 서버시간 발견: %s", found_time)
+            if found_booking_time:
+                # T포함 처리
+                if "T" in found_booking_time:
+                    found_booking_time = found_booking_time.split("T")[1]
+                if found_booking_time.count(":") == 1:
+                    found_booking_time = f"{found_booking_time}:00"
+                self.after(0, lambda: self._server_time_var.set(found_booking_time))
+                logger.info("✅ 예매시작시간 발견: %s", found_booking_time)
             else:
-                logger.warning(
-                    "⚠️ 서버시간을 자동으로 찾을 수 없습니다.\n"
-                    "  수동으로 입력하거나 브라우저에서 URL을 열어 확인하세요."
+                logger.info(
+                    "✅ 서버 연결 OK (현재 서버시간: %s) — 예매시작시간을 수동 입력하세요.\n"
+                    "  (예: 10:00:00 → F5 봇이 09:59:57부터 자동 스팸)",
+                    server_hhmmss,
                 )
 
         except Exception as e:
-            logger.error("❌ 서버시간 불러오기 실패: %s", e)
+            logger.error("❌ 서버시간 측정 실패: %s", e)
 
     # ── 좌표 따기 ──
 

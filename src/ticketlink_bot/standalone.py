@@ -59,22 +59,30 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
     # ── 서버시간 파싱 ──
     server_time_str = cfg.get("booking", {}).get("server_time", "").strip()
     target_epoch = 0
+    # 서버시간 오프셋 (HTTP Date 헤더 측정값, local clock 보정용)
+    server_offset = float(cfg.get("booking", {}).get("server_time_offset", 0))
     if server_time_str:
         try:
             parts = list(map(int, server_time_str.replace("-", ":").split(":")))
+            # 오늘 자정 epoch (local 기준)
             now = time.localtime()
-            target_epoch = int(time.mktime((
+            today_midnight = int(time.mktime((
                 now.tm_year, now.tm_mon, now.tm_mday,
-                parts[0], parts[1] if len(parts) > 1 else 0,
-                parts[2] if len(parts) > 2 else 0,
+                0, 0, 0,
                 now.tm_wday, now.tm_yday, now.tm_isdst,
             )))
-            # 이미 지난 시간이면 내일로
+            # 서버시간 기준 target epoch = 오늘 자정 + HH:MM:SS - offset 보정
+            h, m, s = parts[0], parts[1] if len(parts) > 1 else 0, parts[2] if len(parts) > 2 else 0
+            local_target = today_midnight + h * 3600 + m * 60 + s
+            # server_offset 만큼 보정 (local보다 server가 빠르면 offset > 0)
+            target_epoch = local_target - server_offset
+            # 이미 지난 시간이면 하루 더 (서버시간 기준)
             if target_epoch < time.time():
                 target_epoch += 86400
-            logger.info("  🕐 서버시간: %s → %s까지 대기",
+            logger.info("  🕐 서버시간: %s → %s까지 대기 (offset=%.0fms)",
                         server_time_str,
-                        time.strftime("%H:%M:%S", time.localtime(target_epoch)))
+                        time.strftime("%H:%M:%S", time.localtime(target_epoch)),
+                        server_offset * 1000)
         except (ValueError, IndexError) as e:
             logger.warning("  ⚠️ 서버시간 파싱 실패: %s — 즉시 새로고침", e)
             target_epoch = 0
