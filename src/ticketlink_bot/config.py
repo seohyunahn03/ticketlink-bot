@@ -137,7 +137,10 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
         val = os.environ.get(env_var)
         if val:
             *keys, converter = keys_and_conv
-            _set_nested(cfg, keys, converter(val) if converter else val)
+            if converter is None:
+                _set_nested(cfg, keys, val)
+            else:
+                _set_nested(cfg, keys, converter(val))  # pylint: disable=not-callable
 
     return cfg
 

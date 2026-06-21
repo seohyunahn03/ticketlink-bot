@@ -578,6 +578,17 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         _click(sc[0], sc[1], "구역선택")
         _wait(section_move)
 
+    # ===== 4.7 안내창 확인 (선택) =====
+    cg = macro.get("click_guide", [0, 0])
+    if cg[0] != 0 or cg[1] != 0:
+        if stop_event and stop_event.is_set():
+            result["message"] = "⏹️ 사용자 중지"
+            logger.warning("  ⏹️ %s", result["message"])
+            return result
+        _wait(1)
+        _click(cg[0], cg[1], "안내창 확인")
+        _wait(click_wait)
+
     # ===== 5. 선택완료 =====
     c3 = macro.get("click3", [0, 0])
     if c3[0] != 0 or c3[1] != 0:
