@@ -311,6 +311,7 @@ class TicketlinkGUI(tk.Tk):
             ("captcha_input", "3️⃣ 보안문자 입력창 (매크로봇용)"),
             ("captcha_submit", "4️⃣ 보안문자 확인 버튼"),
             ("section_click", "5️⃣ 구역선택 (선택)"),
+            ("direct_select", "🆕 직접선택 (선택)"),
             ("click_guide", "🔟 안내창 확인 (선택)"),
             ("click3", "6️⃣ 선택완료"),
             ("click4", "7️⃣ 결제하기 (선택)"),
