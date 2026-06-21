@@ -72,6 +72,15 @@ DEFAULT_CONFIG = {
             "gap_tolerance": 40,     # 연속 좌석 간격 픽셀 오차
             "max_results_per_zone": 20,  # 구역당 최대 좌석 후보
         },
+        # ── CDP 폼 하이재킹 (Chrome DevTools Protocol) ──
+        # 크롬을 --remote-debugging-port=9222 로 실행한 후 사용
+        # 예매 제출 시 productId/scheduleId를 원하는 값으로 변경
+        "cdp_hijack": {
+            "enabled": False,
+            "port": 9222,            # Chrome CDP 포트
+            "product_id": "",         # 예: 한화 62162
+            "schedule_id": "",        # 예: 1492740043
+        },
     },
     # 알림
     "notify": {

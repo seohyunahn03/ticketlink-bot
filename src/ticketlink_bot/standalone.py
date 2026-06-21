@@ -29,6 +29,83 @@ def _get_zones(macro: dict) -> list[dict]:
 logger = logging.getLogger("ticketlink_bot")
 
 
+# ── CDP 폼 하이재킹 헬퍼 ──────────────────────────────────────
+
+def _maybe_activate_cdp_hijack(cfg: dict):
+    """CDP 하이재킹이 설정된 경우 연결 + 스크립트 주입
+
+    Returns:
+        CdpHijack 인스턴스 (연결 성공 시) 또는 None
+    """
+    hijack_cfg = cfg.get("macro", {}).get("cdp_hijack", {})
+    if not hijack_cfg.get("enabled"):
+        return None
+
+    product_id = hijack_cfg.get("product_id", "").strip()
+    schedule_id = hijack_cfg.get("schedule_id", "").strip()
+    port = int(hijack_cfg.get("port", 9222))
+
+    if not product_id or not schedule_id:
+        logger.warning("  ⚠️ CDP 하이재킹 활성화됨 but product_id/schedule_id 미설정")
+        return None
+
+    try:
+        from .cdp_hijack import CdpHijack
+        import asyncio
+
+        hijack = CdpHijack(cdp_port=port)
+
+        # 새 이벤트 루프 (기존 스레드와 독립)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            ok = loop.run_until_complete(hijack.connect())
+            if not ok:
+                logger.warning("  ⚠️ CDP 연결 실패 (Chrome CDP 포트 %d 확인)", port)
+                return None
+
+            ok = loop.run_until_complete(hijack.inject(product_id, schedule_id))
+            if not ok:
+                logger.warning("  ⚠️ CDP 하이재킹 주입 실패")
+                loop.run_until_complete(hijack.close())
+                return None
+
+            # 검증
+            status = loop.run_until_complete(hijack.verify())
+            if status.get("active"):
+                logger.info("  ✅ CDP 폼 하이재킹 활성 — product=%s schedule=%s",
+                            product_id, schedule_id)
+                # hijack.loop 저장 (종료 시 재사용)
+                hijack._loop = loop
+                return hijack
+            else:
+                logger.warning("  ⚠️ CDP 하이재킹 검증 실패: %s", status)
+                loop.run_until_complete(hijack.close())
+                return None
+        except Exception:
+            loop.close()
+            raise
+    except Exception as e:
+        logger.error("  ❌ CDP 하이재킹 초기화 오류: %s", e)
+        return None
+
+
+def _close_cdp_hijack(hijack) -> None:
+    """CDP 하이재킹 연결 종료"""
+    if hijack is None:
+        return
+    try:
+        loop = getattr(hijack, "_loop", None)
+        if loop:
+            loop.run_until_complete(hijack.close())
+            loop.close()
+        else:
+            import asyncio
+            asyncio.run(hijack.close())
+    except Exception:
+        pass
+
+
 # ================================================================
 #  새로고침 봇 (F6)
 # ================================================================
@@ -176,6 +253,9 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     row_tolerance = ss.get("row_tolerance", 30)
     gap_tolerance = ss.get("gap_tolerance", 40)
     max_results_per_zone = ss.get("max_results_per_zone", 20)
+
+    # ── CDP 폼 하이재킹 ──
+    _cdp_hijack = _maybe_activate_cdp_hijack(cfg)
 
     logger.info("=" * 50)
     logger.info("  🎫 매크로 봇 — 캡차 + 좌석 매크로")
@@ -341,6 +421,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     if result["stage"] != "payment":
         result["stage"] = "complete"
     logger.info("  🎉 %s", result["message"])
+    _close_cdp_hijack(_cdp_hijack)
     return result
 
 
@@ -415,6 +496,9 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     gap_tolerance = ss.get("gap_tolerance", 40)
     max_results_per_zone = ss.get("max_results_per_zone", 20)
 
+    # ── CDP 폼 하이재킹 ──
+    _cdp_hijack = _maybe_activate_cdp_hijack(cfg)
+
     logger.info("=" * 50)
     logger.info("  🎫 티켓링크봇 — 독립형 매크로")
     logger.info("  Chrome 없이 시스템 레벨로 실행됩니다.")
@@ -425,6 +509,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     if c1[0] == 0 and c1[1] == 0:
         result["message"] = "❌ 예매하기 좌표(click1) 미설정"
         logger.error(result["message"])
+        _close_cdp_hijack(_cdp_hijack)
         return result
 
     logger.info("✅ 설정 확인 완료")
@@ -616,6 +701,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     if result["stage"] != "payment":
         result["stage"] = "complete"
     logger.info("  🎉 %s", result["message"])
+    _close_cdp_hijack(_cdp_hijack)
     return result
 
 

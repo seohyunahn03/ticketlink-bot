@@ -643,6 +643,56 @@ class TicketlinkGUI(tk.Tk):
                    ).grid(row=row, column=9, padx=2)
         row += 1
 
+        # ── CDP 폼 하이재킹 ──
+        sep2 = ttk.Separator(frame, orient="horizontal")
+        sep2.grid(row=row, column=0, columnspan=3, sticky="ew", padx=8, pady=4)
+        row += 1
+        ttk.Label(frame, text="💉 CDP 폼 하이재킹", font=("", 10, "bold")).grid(
+            row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
+        row += 1
+
+        hijack = self._cfg.get("macro", {}).get("cdp_hijack", {})
+        self._cdp_enabled_var = tk.BooleanVar(value=hijack.get("enabled", False))
+        ttk.Checkbutton(frame, text="CDP 하이재킹 활성화", variable=self._cdp_enabled_var).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=2)
+        row += 1
+
+        # CDP port
+        ttk.Label(frame, text="CDP 포트:").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._cdp_port_var = tk.StringVar(value=str(hijack.get("port", 9222)))
+        ttk.Entry(frame, textvariable=self._cdp_port_var, width=8).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        # product_id
+        ttk.Label(frame, text="Product ID (구단코드):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._cdp_product_id_var = tk.StringVar(value=hijack.get("product_id", ""))
+        ttk.Entry(frame, textvariable=self._cdp_product_id_var, width=20).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        # schedule_id
+        ttk.Label(frame, text="Schedule ID (경기코드):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._cdp_schedule_id_var = tk.StringVar(value=hijack.get("schedule_id", ""))
+        ttk.Entry(frame, textvariable=self._cdp_schedule_id_var, width=30).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        # 설명
+        ttk.Label(frame,
+                  text="필수: Chrome --remote-debugging-port=9222 로 실행",
+                  font=("", 8), foreground="gray").grid(
+            row=row, column=0, columnspan=3, sticky="w", padx=8)
+        row += 1
+        ttk.Label(frame,
+                  text="productId를 원하는 경기값으로 변경하여 예매 우회",
+                  font=("", 8), foreground="gray").grid(
+            row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
+        row += 1
+
     # ── xAI OAuth 로그인 ──
 
     def _start_xai_oauth(self):
@@ -1056,6 +1106,14 @@ class TicketlinkGUI(tk.Tk):
             for i, ck in enumerate(["x1", "y1", "x2", "y2"]):
                 self._captcha_area_vars[ck].set(str(ca[i]) if len(ca) > i else "0")
 
+        # CDP hijack
+        hijack = macro.get("cdp_hijack", {})
+        if hasattr(self, "_cdp_enabled_var"):
+            self._cdp_enabled_var.set(hijack.get("enabled", False))
+            self._cdp_port_var.set(str(hijack.get("port", 9222)))
+            self._cdp_product_id_var.set(hijack.get("product_id", ""))
+            self._cdp_schedule_id_var.set(hijack.get("schedule_id", ""))
+
     def _collect_ui_to_cfg(self):
         """UI → 설정"""
         macro = self._cfg.setdefault("macro", {})
@@ -1152,6 +1210,15 @@ class TicketlinkGUI(tk.Tk):
                 ]
             except (ValueError, KeyError):
                 macro.pop("captcha_area", None)
+
+        # CDP hijack — UI → cfg
+        if hasattr(self, "_cdp_enabled_var"):
+            macro["cdp_hijack"] = {
+                "enabled": self._cdp_enabled_var.get(),
+                "port": int(self._cdp_port_var.get() or "9222"),
+                "product_id": self._cdp_product_id_var.get().strip(),
+                "schedule_id": self._cdp_schedule_id_var.get().strip(),
+            }
 
     # ── 이중봇 실행 ──
 
