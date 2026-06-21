@@ -274,6 +274,11 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         # 캡차 재해결
         retry_solved = False
         if auto_captcha:
+            # 캡차 입력창 포커스 (retry에서도 필요)
+            ci = macro.get("captcha_input", [0, 0])
+            if ci[0] != 0 or ci[1] != 0:
+                _click(ci[0], ci[1], "캡차 입력창(재시도)")
+                _wait(0.3)
             try:
                 retry_solved = _standalone_captcha(stop_event=stop_event, method=captcha_method)
             except Exception as e:

@@ -305,8 +305,8 @@ class TicketlinkGUI(tk.Tk):
         fields = [
             ("click1", "1️⃣ 예매하기"),
             ("click2", "2️⃣ 확인 (예매안내 모달)"),
-            ("captcha_submit", "3️⃣ 보안문자 확인 버튼"),
-            ("captcha_input", "4️⃣ 보안문자 입력창 (매크로봇용)"),
+            ("captcha_input", "3️⃣ 보안문자 입력창 (매크로봇용)"),
+            ("captcha_submit", "4️⃣ 보안문자 확인 버튼"),
             ("section_click", "5️⃣ 구역선택 (선택)"),
             ("click3", "6️⃣ 선택완료"),
             ("click4", "7️⃣ 결제하기 (선택)"),
@@ -836,6 +836,28 @@ class TicketlinkGUI(tk.Tk):
 
     # ── 이중봇 실행 ──
 
+    def _update_bot_status(self):
+        """두 봇의 상태를 종합하여 UI 업데이트"""
+        running_parts = []
+        refresh_indicator = ""
+        macro_indicator = ""
+
+        if self._refresh_running:
+            running_parts.append("🔄새로고침")
+            refresh_indicator = "[F6] 🔄"
+        if self._macro_running:
+            running_parts.append("⚡매크로")
+            macro_indicator = "[F7] ⚡"
+
+        if running_parts:
+            self._status_label.configure(
+                text=f"🟢 {'+'.join(running_parts)}", foreground=_AppStyle.SUCCESS)
+        else:
+            self._status_label.configure(text="⏸ 대기중", foreground=_AppStyle.FG)
+
+        combined = "  ".join(p for p in (refresh_indicator, macro_indicator) if p)
+        self._refresh_status_label.configure(text=combined)
+
     def _toggle_refresh(self):
         """F6: 새로고침 봇 시작/중지"""
         if self._refresh_running:
@@ -849,8 +871,7 @@ class TicketlinkGUI(tk.Tk):
         self._refresh_running = True
         self._refresh_stop_event.clear()
         self._refresh_btn.configure(state="disabled", text="🔄 새로고침중...")
-        self._status_label.configure(text="🟢 새로고침봇 실행중", foreground=_AppStyle.SUCCESS)
-        self._refresh_status_label.configure(text="[F6] 🔄", foreground=_AppStyle.SUCCESS)
+        self._update_bot_status()
         threading.Thread(target=self._run_refresh_bot, daemon=True).start()
 
     def _stop_refresh(self):
@@ -858,9 +879,7 @@ class TicketlinkGUI(tk.Tk):
         self._refresh_running = False
         self._refresh_stop_event.set()
         self._refresh_btn.configure(state="normal", text="🔄 새로고침 (F6)")
-        self._refresh_status_label.configure(text="")
-        if not self._macro_running:
-            self._status_label.configure(text="⏸ 대기중", foreground=_AppStyle.FG)
+        self._update_bot_status()
 
     def _toggle_macro(self):
         """F7: 매크로 봇 시작/중지"""
@@ -875,8 +894,7 @@ class TicketlinkGUI(tk.Tk):
         self._macro_running = True
         self._macro_stop_event.clear()
         self._macro_btn.configure(state="disabled", text="⚡ 매크로중...")
-        self._status_label.configure(text="🟢 매크로봇 실행중", foreground=_AppStyle.SUCCESS)
-        self._refresh_status_label.configure(text="[F7] ⚡", foreground=_AppStyle.ACCENT)
+        self._update_bot_status()
         threading.Thread(target=self._run_macro_bot, daemon=True).start()
 
     def _stop_macro_bot(self):
@@ -884,9 +902,7 @@ class TicketlinkGUI(tk.Tk):
         self._macro_running = False
         self._macro_stop_event.set()
         self._macro_btn.configure(state="normal", text="⚡ 매크로 (F7)")
-        self._refresh_status_label.configure(text="")
-        if not self._refresh_running:
-            self._status_label.configure(text="⏸ 대기중", foreground=_AppStyle.FG)
+        self._update_bot_status()
 
     def _stop_all(self):
         """전체 중지"""
