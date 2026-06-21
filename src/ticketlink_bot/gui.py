@@ -378,6 +378,30 @@ class TicketlinkGUI(tk.Tk):
         ttk.Entry(frame, textvariable=self._tolerance_var, width=6).grid(
             row=row, column=1, sticky="w", padx=4)
 
+        # ── 좌석 검색 파라미터 ──
+        row += 1
+        ttk.Label(frame, text="", font=_AppStyle.FONT_SMALL).grid(row=row, column=0, pady=4)
+        row += 1
+        ttk.Label(frame, text="⚙️ 좌석 검색 파라미터", font=("", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
+
+        seat_search_params = [
+            ("row_tolerance", "같은열 오차(px):", str(
+                self._cfg.get("macro", {}).get("seat_search", {}).get("row_tolerance", 30))),
+            ("gap_tolerance", "좌석간격 오차(px):", str(
+                self._cfg.get("macro", {}).get("seat_search", {}).get("gap_tolerance", 40))),
+            ("max_results_per_zone", "구역당 최대후보:", str(
+                self._cfg.get("macro", {}).get("seat_search", {}).get("max_results_per_zone", 20))),
+        ]
+        self._seat_search_vars = {}
+        for key, label, default in seat_search_params:
+            row += 1
+            ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=3)
+            var = tk.StringVar(value=default)
+            ttk.Entry(frame, textvariable=var, width=8).grid(
+                row=row, column=1, sticky="w", padx=4)
+            self._seat_search_vars[key] = var
+
     def _add_zone_ui(self, area=None, color=None, tolerance=None):
         """Zone 편집 UI 추가"""
         idx = len(self._zone_frames)
@@ -432,18 +456,70 @@ class TicketlinkGUI(tk.Tk):
             row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
         row += 1
 
-        fields = [
-            ("team", "응원 팀:", self._cfg.get("booking", {}).get("team", "LG")),
+        # team, ticket_count (loop)
+        simple_fields = [
+            ("team", "응원 팀:", self._cfg.get("booking", {}).get("team", "LG 트윈스")),
             ("ticket_count", "매수:", str(self._cfg.get("booking", {}).get("ticket_count", 2))),
-            ("server_time", "서버시간 (HH:MM:SS):", self._cfg.get("booking", {}).get("server_time", "")),
-            ("click_wait", "클릭 후 대기(초):", "3"),
-            ("seat_click", "좌석 딜레이(ms):", "500"),
-            ("refresh", "새로고침 간격(ms):", "2000"),
         ]
-        for key, label, default in fields:
+        for key, label, default in simple_fields:
             ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=4)
             var = tk.StringVar(value=default)
             ttk.Entry(frame, textvariable=var, width=20).grid(
+                row=row, column=1, sticky="w", padx=4, pady=2)
+            self._settings_vars[key] = var
+            row += 1
+
+        # server_time + "불러오기" 버튼
+        ttk.Label(frame, text="서버시간 (HH:MM:SS):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._server_time_var = tk.StringVar(
+            value=self._cfg.get("booking", {}).get("server_time", ""))
+        ttk.Entry(frame, textvariable=self._server_time_var, width=12).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        ttk.Button(frame, text="🔍 서버시간 불러오기",
+                   command=self._fetch_server_time).grid(
+            row=row, column=2, sticky="w", padx=4)
+        row += 1
+
+        # default_url + "열기" 버튼
+        ttk.Label(frame, text="예매 URL:").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._default_url_var = tk.StringVar(
+            value=self._cfg.get("booking", {}).get("default_url",
+                  "https://www.ticketlink.co.kr/sports/137/59"))
+        url_entry = ttk.Entry(frame, textvariable=self._default_url_var, width=40)
+        url_entry.grid(row=row, column=1, sticky="ew", padx=4, pady=2)
+        ttk.Button(frame, text="🌐 열기",
+                   command=lambda: self._open_url(self._default_url_var.get())).grid(
+            row=row, column=2, sticky="w", padx=4)
+        row += 1
+
+        # prefer_seat
+        ttk.Label(frame, text="선호 좌석:").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._prefer_seat_var = tk.StringVar(
+            value=self._cfg.get("booking", {}).get("prefer_seat", ""))
+        ttk.Entry(frame, textvariable=self._prefer_seat_var, width=20).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        # ── 딜레이/제어값 ──
+        ttk.Label(frame, text="⏱️ 딜레이 & 제어값", font=("", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 4))
+        row += 1
+
+        delay_fields = [
+            ("click_wait", "클릭 후 대기(초):", "3"),
+            ("seat_click", "좌석 딜레이(ms):", "10"),
+            ("section_move", "구역 이동 딜레이(ms):", "200"),
+            ("refresh", "새로고침 간격(ms):", "500"),
+            ("max_retries", "최대 재시도 횟수:", "30"),
+            ("max_screenshot_fails", "최대 스크린샷 실패:", "5"),
+        ]
+        for key, label, default in delay_fields:
+            ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=4)
+            var = tk.StringVar(value=default)
+            ttk.Entry(frame, textvariable=var, width=12).grid(
                 row=row, column=1, sticky="w", padx=4, pady=2)
             self._settings_vars[key] = var
             row += 1
@@ -539,6 +615,90 @@ class TicketlinkGUI(tk.Tk):
             logger.error("❌ xAI OAuth 로그인 오류: %s", e)
             import traceback
             traceback.print_exc()
+
+    # ── URL/서버시간 도구 ──
+
+    def _open_url(self, url: str):
+        """브라우저에서 URL 열기"""
+        import webbrowser
+        if url and url.startswith("http"):
+            webbrowser.open(url)
+            logger.info("🌐 브라우저 열기: %s", url)
+        else:
+            logger.warning("⚠️ 올바른 URL이 아닙니다: %s", url)
+
+    def _fetch_server_time(self):
+        """URL에서 서버시간(예매오픈시간) 추출 (별도 스레드)"""
+        threading.Thread(target=self._do_fetch_server_time, daemon=True).start()
+
+    def _do_fetch_server_time(self):
+        """백그라운드에서 HTML 파싱하여 서버시간 추출"""
+        url = self._default_url_var.get().strip()
+        if not url or not url.startswith("http"):
+            logger.warning("⚠️ 올바른 예매 URL을 먼저 입력하세요.")
+            return
+
+        logger.info("🔍 서버시간 확인 중: %s", url)
+        try:
+            import urllib.request
+            import re
+            import json
+
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                   "AppleWebKit/537.36"),
+                    "Accept": "text/html,application/json,*/*",
+                },
+            )
+            resp = urllib.request.urlopen(req, timeout=15)
+            html = resp.read().decode("utf-8", errors="replace")
+
+            # 1) JSON-LD / structured data에서 bookingPeriod 검색
+            found_time = None
+
+            # "bookingPeriod": "2026-06-25T10:00:00" 패턴
+            m = re.search(r'"bookingPeriod"\s*:\s*"([^"]+)"', html)
+            if m:
+                found_time = m.group(1)
+
+            # 2) "2026-06-21 10:00" 형식의 시간 패턴
+            if not found_time:
+                m = re.search(r'(\d{4}[-/]\d{2}[-/]\d{2})\s+(\d{2}:\d{2})', html)
+                if m:
+                    found_time = f"{m.group(2)}:00"
+
+            # 3) "10:00" 단순 시간 패턴 (티켓오픈, 예매시작 근처)
+            if not found_time:
+                # "예매시작" 또는 "오픈" 근처에서 HH:MM 찾기
+                for keyword in ["예매", "오픈", "시작", "open", "booking"]:
+                    idx = html.lower().find(keyword)
+                    if idx >= 0:
+                        snippet = html[idx:idx+200]
+                        m = re.search(r'(\d{2}:\d{2}(?::\d{2})?)', snippet)
+                        if m:
+                            found_time = m.group(1)
+                            break
+
+            if found_time:
+                # T포함이면 T 기준으로 자르기
+                if "T" in found_time:
+                    found_time = found_time.split("T")[1]
+                # 초 없으면 :00 추가
+                if found_time.count(":") == 1:
+                    found_time = f"{found_time}:00"
+
+                self.after(0, lambda: self._server_time_var.set(found_time))
+                logger.info("✅ 서버시간 발견: %s", found_time)
+            else:
+                logger.warning(
+                    "⚠️ 서버시간을 자동으로 찾을 수 없습니다.\n"
+                    "  수동으로 입력하거나 브라우저에서 URL을 열어 확인하세요."
+                )
+
+        except Exception as e:
+            logger.error("❌ 서버시간 불러오기 실패: %s", e)
 
     # ── 좌표 따기 ──
 
@@ -748,15 +908,27 @@ class TicketlinkGUI(tk.Tk):
         self._consecutive_var.set(str(macro.get("consecutive_seats", 2)))
         self._tolerance_var.set(str(macro.get("color_tolerance", 20)))
 
+        # Seat search vars
+        ss = macro.get("seat_search", {})
+        if hasattr(self, "_seat_search_vars"):
+            self._seat_search_vars["row_tolerance"].set(str(ss.get("row_tolerance", 30)))
+            self._seat_search_vars["gap_tolerance"].set(str(ss.get("gap_tolerance", 40)))
+            self._seat_search_vars["max_results_per_zone"].set(str(ss.get("max_results_per_zone", 20)))
+
         # Settings
         booking = self._cfg.get("booking", {})
-        self._settings_vars["team"].set(booking.get("team", "LG"))
+        self._settings_vars["team"].set(booking.get("team", "LG 트윈스"))
         self._settings_vars["ticket_count"].set(str(booking.get("ticket_count", 2)))
-        self._settings_vars["server_time"].set(booking.get("server_time", ""))
+        self._server_time_var.set(booking.get("server_time", ""))
+        self._default_url_var.set(booking.get("default_url", "https://www.ticketlink.co.kr/sports/137/59"))
+        self._prefer_seat_var.set(booking.get("prefer_seat", ""))
         delays = macro.get("delays", {})
         self._settings_vars["click_wait"].set(str(delays.get("click_wait", 3)))
-        self._settings_vars["seat_click"].set(str(delays.get("seat_click", 500)))
-        self._settings_vars["refresh"].set(str(delays.get("refresh", 2000)))
+        self._settings_vars["seat_click"].set(str(delays.get("seat_click", 10)))
+        self._settings_vars["section_move"].set(str(delays.get("section_move", 200)))
+        self._settings_vars["refresh"].set(str(delays.get("refresh", 500)))
+        self._settings_vars["max_retries"].set(str(macro.get("max_retries", 30)))
+        self._settings_vars["max_screenshot_fails"].set(str(macro.get("max_screenshot_fails", 5)))
 
         # xAI / captcha — cfg → UI 읽기
         xai_cfg = self._cfg.get("xai", {})
@@ -811,6 +983,15 @@ class TicketlinkGUI(tk.Tk):
         except ValueError:
             macro["color_tolerance"] = 20
 
+        # Seat search vars
+        ss = macro.setdefault("seat_search", {})
+        if hasattr(self, "_seat_search_vars"):
+            for k in ("row_tolerance", "gap_tolerance", "max_results_per_zone"):
+                try:
+                    ss[k] = int(self._seat_search_vars[k].get())
+                except (ValueError, KeyError):
+                    ss[k] = {"row_tolerance": 30, "gap_tolerance": 40, "max_results_per_zone": 20}.get(k, 0)
+
         # Settings
         booking = self._cfg.setdefault("booking", {})
         booking["team"] = self._settings_vars["team"].get()
@@ -818,14 +999,22 @@ class TicketlinkGUI(tk.Tk):
             booking["ticket_count"] = int(self._settings_vars["ticket_count"].get())
         except ValueError:
             booking["ticket_count"] = 2
-        booking["server_time"] = self._settings_vars["server_time"].get().strip()
+        booking["server_time"] = self._server_time_var.get().strip()
+        booking["default_url"] = self._default_url_var.get().strip()
+        booking["prefer_seat"] = self._prefer_seat_var.get().strip()
 
         delays = macro.setdefault("delays", {})
-        for k in ("click_wait", "seat_click", "refresh"):
+        for k in ("click_wait", "seat_click", "section_move", "refresh"):
             try:
                 delays[k] = int(self._settings_vars[k].get())
             except (ValueError, KeyError):
-                delays[k] = {"click_wait": 3, "seat_click": 500, "refresh": 2000}.get(k, 0)
+                delays[k] = {"click_wait": 3, "seat_click": 10, "section_move": 200, "refresh": 500}.get(k, 0)
+
+        for k in ("max_retries", "max_screenshot_fails"):
+            try:
+                macro[k] = int(self._settings_vars[k].get())
+            except (ValueError, KeyError):
+                macro[k] = {"max_retries": 30, "max_screenshot_fails": 5}.get(k, 0)
 
         # xAI / captcha — UI → cfg 저장
         xai_cfg = self._cfg.setdefault("xai", {})
