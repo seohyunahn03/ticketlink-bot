@@ -13,8 +13,6 @@ Authorization Code Flow + PKCE를 사용한 xAI/Grok OAuth 인증.
     # 이후: 저장된 토큰 사용 (만료 시 자동 갱신)
     token = get_xai_token()
 """
-import base64
-import hashlib
 import json
 import logging
 import os
@@ -23,9 +21,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-import uuid
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Optional
 
@@ -38,13 +34,6 @@ XAI_OAUTH_ISSUER = "https://auth.x.ai"
 XAI_OAUTH_DISCOVERY_URL = f"{XAI_OAUTH_ISSUER}/.well-known/openid-configuration"
 XAI_OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
 XAI_OAUTH_SCOPE = "openid profile email offline_access grok-cli:access api:access"
-XAI_OAUTH_REDIRECT_HOST = "127.0.0.1"
-XAI_OAUTH_REDIRECT_PORT = 56121
-XAI_OAUTH_REDIRECT_PATH = "/callback"
-XAI_OAUTH_REDIRECT_URI = (
-    f"http://{XAI_OAUTH_REDIRECT_HOST}:{XAI_OAUTH_REDIRECT_PORT}"
-    f"{XAI_OAUTH_REDIRECT_PATH}"
-)
 XAI_API_BASE_URL = "https://api.x.ai/v1"
 
 # 토큰 저장 경로
@@ -80,113 +69,74 @@ def _xai_discover(timeout: float = 15.0) -> dict:
 
 
 # ============================================================
-# PKCE
+# Device Code Flow (RFC 8628) — xAI OAuth
 # ============================================================
 
-def _pkce_code_verifier() -> str:
-    """PKCE code_verifier 생성 (S256)"""
-    return base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=").decode()
-
-
-def _pkce_code_challenge(verifier: str) -> str:
-    """PKCE code_challenge = base64url(sha256(verifier))"""
-    digest = hashlib.sha256(verifier.encode()).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-
-
-# ============================================================
-# Authorization URL 생성
-# ============================================================
-
-def _build_authorize_url(
-    auth_endpoint: str,
-    code_challenge: str,
-    state: str,
-    nonce: str,
-) -> str:
-    """브라우저에서 열 xAI OAuth 인증 URL 생성"""
-    params = urllib.parse.urlencode({
-        "response_type": "code",
-        "client_id": XAI_OAUTH_CLIENT_ID,
-        "redirect_uri": XAI_OAUTH_REDIRECT_URI,
-        "scope": XAI_OAUTH_SCOPE,
-        "state": state,
-        "nonce": nonce,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
-    })
-    return f"{auth_endpoint}?{params}"
-
-
-# ============================================================
-# 로컬 콜백 서버
-# ============================================================
-
-class _CallbackHandler(BaseHTTPRequestHandler):
-    """OAuth 콜백을 받는 로컬 HTTP 서버 핸들러"""
-
-    def do_GET(self):
-        self.server.callback_result = {  # type: ignore
-            "path": self.path,
-            "headers": dict(self.headers),
-        }
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-
-        # xAI가 요구하는 CORS preflight-friendly 응답
-        body = (
-            "<html><body><h1>✅ 인증 완료!</h1>"
-            "<p>이 창은 닫아도 됩니다. 터미널로 돌아가세요.</p>"
-            "<script>window.close()</script>"
-            "</body></html>"
-        ).encode("utf-8")
-        self.wfile.write(body)
-
-    def log_message(self, fmt, *args):
-        pass  # 조용히
-
-
-def _start_callback_server() -> tuple[HTTPServer, threading.Thread, dict]:
-    """로컬 콜백 서버 시작"""
-    result: dict = {}
-    server = HTTPServer(
-        (XAI_OAUTH_REDIRECT_HOST, XAI_OAUTH_REDIRECT_PORT),
-        _CallbackHandler,
-    )
-    server.callback_result = result  # type: ignore
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    return server, thread, result
-
-
-# ============================================================
-# 토큰 교환 (Authorization Code → Access Token)
-# ============================================================
-
-def _exchange_code(
-    token_endpoint: str,
-    code: str,
-    code_verifier: str,
-    timeout: float = 20.0,
-) -> dict:
-    """Authorization Code를 Access Token으로 교환"""
+def _request_device_code(discovery: dict) -> dict:
+    """xAI Device Code 요청 → user_code + device_code + verification_uri"""
+    device_endpoint = discovery.get("device_authorization_endpoint")
+    if not device_endpoint:
+        raise RuntimeError("xAI OIDC에 device_authorization_endpoint 없음")
     data = urllib.parse.urlencode({
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": XAI_OAUTH_REDIRECT_URI,
         "client_id": XAI_OAUTH_CLIENT_ID,
-        "code_verifier": code_verifier,
+        "scope": XAI_OAUTH_SCOPE,
     }).encode()
-
     req = urllib.request.Request(
-        token_endpoint,
-        data=data,
+        device_endpoint, data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     ctx = ssl.create_default_context()
-    resp = urllib.request.urlopen(req, context=ctx, timeout=timeout)
+    resp = urllib.request.urlopen(req, context=ctx, timeout=15)
     return json.loads(resp.read())
+
+
+def _poll_device_token(device_code: str, token_endpoint: str, interval: int = 5,
+                       timeout: float = 300.0) -> dict:
+    """Device Code → Access Token 폴링"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        data = urllib.parse.urlencode({
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+            "device_code": device_code,
+            "client_id": XAI_OAUTH_CLIENT_ID,
+        }).encode()
+        req = urllib.request.Request(
+            token_endpoint, data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        ctx = ssl.create_default_context()
+        try:
+            resp = urllib.request.urlopen(req, context=ctx, timeout=10)
+            return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()
+            try:
+                err_json = json.loads(body)
+            except json.JSONDecodeError:
+                err_json = {}
+            err = err_json.get("error", "unknown")
+            if err == "authorization_pending":
+                time.sleep(interval)
+                continue
+            elif err == "slow_down":
+                interval += 5
+                time.sleep(interval)
+                continue
+            elif err == "expired_token":
+                raise TimeoutError("⏱️ Device Code 만료 — 다시 시도하세요.")
+            else:
+                raise RuntimeError(f"❌ Device Code 폴링 오류: {err}")
+    raise TimeoutError(f"⏱️ OAuth 인증 타임아웃 ({timeout:.0f}초)")
+
+
+def _cleanup_old_token():
+    """로그인 전 이전 토큰 제거 (깨끗한 상태에서 재시도)"""
+    if TOKEN_PATH.exists():
+        try:
+            TOKEN_PATH.unlink()
+            logger.info("   이전 토큰 삭제: %s", TOKEN_PATH)
+        except Exception as e:
+            logger.debug("   이전 토큰 삭제 실패: %s", e)
 
 
 # ============================================================
@@ -249,15 +199,14 @@ def xai_oauth_login(
     open_browser: bool = True,
 ) -> dict:
     """
-    xAI OAuth PKCE 로그인 플로우 실행.
+    xAI OAuth Device Code 로그인 플로우 실행.
 
     1. OIDC Discovery
-    2. PKCE code_verifier/challenge 생성
-    3. 로컬 HTTP 서버 시작 (포트 56121)
-    4. 브라우저에서 xAI 인증 URL 열기
-    5. 콜백 수신 → Authorization Code 획득
-    6. Token Exchange → Access/Refresh Token 저장
-    7. 저장된 토큰 반환
+    2. Device Code 요청 (user_code + verification_uri)
+    3. 브라우저에서 verification_uri 열기
+    4. 사용자가 user_code 입력 후 인증
+    5. Polling → Access/Refresh Token 획득
+    6. 저장된 토큰 반환
 
     Returns:
         {"access_token": str, "refresh_token": str, "expires_at": int, ...}
@@ -267,74 +216,51 @@ def xai_oauth_login(
     # 1. Discovery
     logger.info("   OIDC discovery 중...")
     discovery = _xai_discover()
-    auth_endpoint = discovery["authorization_endpoint"]
     token_endpoint = discovery["token_endpoint"]
 
-    # 2. PKCE
-    code_verifier = _pkce_code_verifier()
-    code_challenge = _pkce_code_challenge(code_verifier)
-    state = uuid.uuid4().hex
-    nonce = uuid.uuid4().hex
+    # 2. 기존 토큰 정리 (싱크 맞춤)
+    _cleanup_old_token()
 
-    # 3. 로컬 콜백 서버
-    server, thread, callback_result = _start_callback_server()
+    # 3. Device Code 요청
+    logger.info("   Device Code 요청 중...")
+    device_resp = _request_device_code(discovery)
+    device_code = device_resp["device_code"]
+    user_code = device_resp["user_code"]
+    verification_uri = device_resp.get("verification_uri",
+                                        device_resp.get("verification_uri_complete",
+                                                        "https://auth.x.ai/device"))
+    interval = device_resp.get("interval", 5)
 
-    try:
-        # 4. 인증 URL 생성
-        auth_url = _build_authorize_url(
-            auth_endpoint, code_challenge, state, nonce,
-        )
+    # 4. 사용자에게 코드 표시 + 브라우저 열기
+    print(f"\n{'='*60}")
+    print(f"  🔐 xAI OAuth 인증")
+    print(f"{'='*60}")
+    print(f"  1. 브라우저가 열리면 xAI 계정으로 로그인하세요.")
+    print(f"  2. 아래 코드를 입력하세요:")
+    print(f"\n  ┌──────────────────────────────┐")
+    print(f"  │                              │")
+    print(f"  │      인증 코드: {user_code}     │")
+    print(f"  │                              │")
+    print(f"  └──────────────────────────────┘")
+    print(f"\n  또는 브라우저에서 직접 접속:")
+    print(f"  {verification_uri}")
+    print(f"\n  (자동으로 브라우저가 열립니다)")
+    print(f"  (타임아웃: {timeout_seconds:.0f}초)")
+    print(f"{'='*60}\n")
 
-        print(f"\n{'='*60}")
-        print(f"  🔐 xAI OAuth 인증")
-        print(f"{'='*60}")
-        print(f"  브라우저가 열리면 xAI 계정으로 로그인하세요.")
-        print(f"  (자동으로 열리지 않으면 아래 URL을 직접 열어주세요)")
-        print(f"\n  {auth_url}")
-        print(f"\n  콜백 대기 중... http://127.0.0.1:{XAI_OAUTH_REDIRECT_PORT}")
-        print(f"{'='*60}\n")
+    # 5. 브라우저 열기 (verification_uri)
+    if open_browser:
+        try:
+            webbrowser.open(verification_uri)
+        except Exception:
+            pass
 
-        # 5. 브라우저 열기
-        if open_browser:
-            try:
-                webbrowser.open(auth_url)
-            except Exception:
-                pass
-
-        # 6. 콜백 대기
-        deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
-            if callback_result:
-                break
-            time.sleep(0.5)
-
-        if not callback_result:
-            raise TimeoutError(
-                f"⏱️ OAuth 콜백 타임아웃 ({timeout_seconds}초). "
-                "다시 시도하려면 --setup 을 다시 실행하세요."
-            )
-
-        # 7. Authorization Code 추출
-        path = callback_result["path"]
-        parsed = urllib.parse.urlparse(f"http://localhost{path}")
-        params = urllib.parse.parse_qs(parsed.query)
-
-        if "code" not in params:
-            error = params.get("error", ["unknown"])[0]
-            raise RuntimeError(
-                f"❌ xAI OAuth 인증 실패 (error={error})"
-            )
-
-        code = params["code"][0]
-
-        # 8. Token Exchange
-        logger.info("   Authorization Code → Token 교환 중...")
-        token_result = _exchange_code(token_endpoint, code, code_verifier)
-
-    finally:
-        # 콜백 서버 종료
-        server.shutdown()
-        thread.join(timeout=2)
+    # 6. Polling → Token
+    logger.info("   인증 완료 대기 중... (브라우저에서 코드를 입력하세요)")
+    token_result = _poll_device_token(
+        device_code, token_endpoint,
+        interval=interval, timeout=timeout_seconds,
+    )
 
     # 9. 토큰 정리 및 저장
     tokens = _normalize_tokens(token_result)
