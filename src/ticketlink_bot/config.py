@@ -62,7 +62,7 @@ DEFAULT_CONFIG = {
             "seat_click": 10,   # 좌석 잡는 순간 딜레이(ms)
             "section_move": 200,# 구역 이동 딜레이(ms)
             "refresh": 500,     # 새로고침 간격(ms)
-            "captcha_typing_delay": 50,  # 캡차 글자간 입력 간격(ms), 비정상 빠른입력 방지
+            "captcha_typing_delay": 30,  # 캡차 글자간 입력 간격(ms), 비정상 빠른입력 방지
         },
         # ── 매크로 제어값 (하드코딩 대신 설정 가능) ──
         "max_retries": 30,        # 좌석 검색 최대 재시도 횟수

@@ -151,7 +151,7 @@ class TicketlinkGUI(tk.Tk):
         self._server_offset = 0.0
 
         # 상태바 초기화
-        self._statusbar.configure(text=" [F6] 새로고침봇  |  [F7] 매크로봇  |  [ESC] 종료")
+        self._statusbar.configure(text=' [F6] 새로고침봇  |  [F8] 매크로봇  |  [ESC] 종료')
 
     # ── 메뉴 ──
 
@@ -292,7 +292,7 @@ class TicketlinkGUI(tk.Tk):
 
         # 매크로 봇 (F7)
         self._macro_btn = ttk.Button(
-            btn_row, text="⚡ 매크로 (F7)", style="Accent.TButton",
+            btn_row, text="⚡ 매크로 (F8)", style="Accent.TButton",
             command=self._toggle_macro,
         )
         self._macro_btn.grid(row=0, column=1, padx=(0, 4))
@@ -314,7 +314,7 @@ class TicketlinkGUI(tk.Tk):
 
         # 상태바
         self._statusbar = ttk.Label(
-            bottom, text=" [F6] 새로고침봇  |  [F7] 매크로봇  |  [ESC] 종료",
+            bottom, text=" [F6] 새로고침봇  |  [F8] 매크로봇  |  [ESC] 종료",
             font=_AppStyle.FONT_SMALL, foreground=_AppStyle.SURFACE2,
         )
         self._statusbar.grid(row=2, column=0, sticky="ew", pady=(4, 0))
@@ -539,7 +539,7 @@ class TicketlinkGUI(tk.Tk):
             ("seat_click", "좌석 딜레이(ms):", "10"),
             ("section_move", "구역 이동 딜레이(ms):", "200"),
             ("refresh", "새로고침 간격(ms):", "500"),
-            ("captcha_typing_delay", "캡차 입력 간격(ms):", "50"),
+            ("captcha_typing_delay", "캡차 입력 간격(ms):", "30"),
             ("max_retries", "최대 재시도 횟수:", "30"),
             ("max_screenshot_fails", "최대 스크린샷 실패:", "5"),
         ]
@@ -1038,7 +1038,7 @@ class TicketlinkGUI(tk.Tk):
         self._settings_vars["seat_click"].set(str(delays.get("seat_click", 10)))
         self._settings_vars["section_move"].set(str(delays.get("section_move", 200)))
         self._settings_vars["refresh"].set(str(delays.get("refresh", 500)))
-        self._settings_vars["captcha_typing_delay"].set(str(delays.get("captcha_typing_delay", 50)))
+        self._settings_vars["captcha_typing_delay"].set(str(delays.get("captcha_typing_delay", 30)))
         self._settings_vars["max_retries"].set(str(macro.get("max_retries", 30)))
         self._settings_vars["max_screenshot_fails"].set(str(macro.get("max_screenshot_fails", 5)))
 
@@ -1126,7 +1126,7 @@ class TicketlinkGUI(tk.Tk):
             try:
                 delays[k] = int(self._settings_vars[k].get())
             except (ValueError, KeyError):
-                delays[k] = {"click_wait": 3, "seat_click": 10, "section_move": 200, "refresh": 500, "captcha_typing_delay": 50}.get(k, 0)
+                delays[k] = {"click_wait": 3, "seat_click": 10, "section_move": 200, "refresh": 500, "captcha_typing_delay": 30}.get(k, 0)
 
         for k in ("max_retries", "max_screenshot_fails"):
             try:
@@ -1166,7 +1166,7 @@ class TicketlinkGUI(tk.Tk):
             refresh_indicator = "[F6] 🔄"
         if self._macro_running:
             running_parts.append("⚡매크로")
-            macro_indicator = "[F7] ⚡"
+            macro_indicator = "[F8] ⚡"
 
         if running_parts:
             self._status_label.configure(
@@ -1201,7 +1201,7 @@ class TicketlinkGUI(tk.Tk):
         self._update_bot_status()
 
     def _toggle_macro(self):
-        """F7: 매크로 봇 시작/중지"""
+        """F8: 매크로 봇 시작/중지"""
         if self._macro_running:
             self._stop_macro_bot()
         else:
@@ -1220,7 +1220,7 @@ class TicketlinkGUI(tk.Tk):
         """매크로 봇 중지"""
         self._macro_running = False
         self._macro_stop_event.set()
-        self._macro_btn.configure(state="normal", text="⚡ 매크로 (F7)")
+        self._macro_btn.configure(state="normal", text="⚡ 매크로 (F8)")
         self._update_bot_status()
 
     def _stop_all(self):
@@ -1288,12 +1288,12 @@ class TicketlinkGUI(tk.Tk):
             "1. 좌표 설정: 각 버튼의 위치를 '따기' 버튼으로 설정\n"
             "2. 좌석 영역: 빈 좌석의 색상과 검색 영역 설정\n"
             "3. 새로고침봇(F6) → 예매하기 + 확인까지 자동\n"
-            "4. 매크로봇(F7) → 캡차 + 좌석검색 + 결제까지 자동\n\n"
+            "4. 매크로봇(F8) → 캡차 + 좌석검색 + 결제까지 자동\n\n"
             "🎯 좌표 따기:\n"
             "  - '글로벌' 버튼 → 화면 어디서나 우클릭\n\n"
             "⌨️ 단축키:\n"
             "  F6: 새로고침 봇 시작/중지\n"
-            "  F7: 매크로 봇 시작/중지\n"
+            "  F8: 매크로 봇 시작/중지\n"
             "  ESC: 종료"
         )
 
@@ -1316,7 +1316,7 @@ class TicketlinkGUI(tk.Tk):
                 try:
                     if key == _kb.Key.f6:
                         self.after(0, self._toggle_refresh)
-                    elif key == _kb.Key.f7:
+                    elif key == _kb.Key.f8:
                         self.after(0, self._toggle_macro)
                     elif key == _kb.Key.esc:
                         self.after(0, self._on_close)
@@ -1325,7 +1325,7 @@ class TicketlinkGUI(tk.Tk):
             self._hotkey_listener = _kb.Listener(on_press=_on_press)
             self._hotkey_listener.daemon = True
             self._hotkey_listener.start()
-            logger.info("⌨️ 글로벌 핫키: F6=새로고침봇, F7=매크로봇, ESC=종료")
+            logger.info("⌨️ 글로벌 핫키: F6=새로고침봇, F8=매크로봇, ESC=종료")
         except ImportError:
             logger.info("  pynput 미설치 — 글로벌 핫키 미지원")
         except Exception as e:

@@ -686,7 +686,7 @@ def _standalone_captcha(stop_event: Optional[threading.Event] = None,
     import random as _rand
     time.sleep(_rand.uniform(0.3, 0.8))
     SystemBot.press("enter")
-    time.sleep(1.0)
+    time.sleep(0.5)
     return True
 
 
