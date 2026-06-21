@@ -22,6 +22,80 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+# ── 구단 Product ID 사전 ─────────────────────────────────────────
+# 티켓링크에서 각 구단(팀)의 고정 productId
+TEAM_PRODUCT_IDS = {
+    "LG 트윈스": "61881",
+    "한화 이글스": "62162",
+    "삼성 라이온즈": "62111",
+    "KT 위즈": "61322",
+    "KIA 타이거즈": "62036",
+    "두산 베어스": "61885",
+    "SSG 랜더스": "62109",
+    "NC 다이노스": "61884",
+    "롯데 자이언츠": "61882",
+    "키움 히어로즈": "62042",
+}
+
+# 역방향: productId → 팀명
+PRODUCT_ID_TO_TEAM = {v: k for k, v in TEAM_PRODUCT_IDS.items()}
+
+
+# ── 경기 데이터 추출 스크립트 ─────────────────────────────────────
+# CDP Runtime.evaluate 로 페이지에서 경기 정보 읽기
+FETCH_GAMES_JS = r"""(() => {
+    const games = [];
+
+    // 전략 1: data-* 속성 찾기
+    const els = document.querySelectorAll('[data-schedule-id], [data-schedule], [data-game-id], [data-product-id]');
+    for (const el of els) {
+        const sid = el.dataset.scheduleId || el.dataset.schedule || el.dataset.gameId || '';
+        const pid = el.dataset.productId || '';
+        if (sid) {
+            games.push({
+                scheduleId: sid,
+                productId: pid,
+                text: (el.textContent || '').trim().substring(0, 100),
+            });
+        }
+    }
+
+    // 전략 2: window.__INITIAL_STATE__ or __NEXT_DATA__
+    try {
+        const state = window.__INITIAL_STATE__ || window.__DATA__ || window.__NEXT_DATA__;
+        if (state) {
+            games.push({_strategy: 'window.__INITIAL_STATE__', _data: JSON.stringify(state).substring(0, 500)});
+        }
+    } catch (e) {}
+
+    // 전략 3: script 태그에서 JSON 찾기
+    const scripts = document.querySelectorAll('script[type="application/json"], script#__NEXT_DATA__, script.__NEXT_DATA__');
+    for (const s of scripts) {
+        try {
+            const data = JSON.parse(s.textContent);
+            games.push({_strategy: 'script#' + s.id, _data: JSON.stringify(data).substring(0, 500)});
+        } catch (e) {}
+    }
+
+    // 전략 4: 모든 링크에서 /reserve/product/ 패턴 찾기
+    const links = document.querySelectorAll('a[href*="reserve/product"]');
+    for (const a of links) {
+        const m = a.href.match(/\/reserve\/product\/(\d+)\?scheduleId=(\d+)/);
+        if (m) {
+            games.push({
+                scheduleId: m[2],
+                productId: m[1],
+                text: (a.textContent || '').trim().substring(0, 80),
+                href: a.href.substring(0, 120),
+            });
+        }
+    }
+
+    return games;
+})();
+"""
+
+
 # ── 하이재킹 스크립트 ─────────────────────────────────────────────
 # Page.addScriptToEvaluateOnNewDocument 로 주입되어 모든 페이지 로드 시 실행됨
 HIJACK_SCRIPT_JS = r"""(() => {
@@ -164,6 +238,84 @@ class CdpHijack:
         if result and "result" in result:
             return result["result"].get("value", {})
         return {"active": False, "error": "verify failed"}
+
+    # ── 경기 목록 스크래핑 ─────────────────────────────────────────
+
+    async def navigate(self, url: str, timeout: float = 15.0) -> bool:
+        """CDP로 페이지 이동 + 로딩 대기"""
+        if not self.ws:
+            return False
+        # Page.navigate
+        await self._send("Page.navigate", {"url": url})
+        # loadEventFired 기다리기
+        import asyncio
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            result = await self._send_with_result("Runtime.evaluate", {
+                "expression": "document.readyState",
+                "returnByValue": True,
+            })
+            state = ""
+            if result and "result" in result:
+                state = result["result"].get("value", "")
+            if state == "complete":
+                return True
+            await asyncio.sleep(0.5)
+        return False
+
+    async def fetch_games(self, product_id: str) -> list[dict]:
+        """특정 구단의 경기 목록을 CDP로 스크래핑
+
+        Args:
+            product_id: 구단 productId (예: "62162" = 한화)
+
+        Returns:
+            [{"scheduleId": ..., "productId": ..., "text": ..., ...}]
+        """
+        if not self.ws:
+            logger.warning("  ⚠️ CDP 미연결 — 먼저 connect() 호출 필요")
+            return []
+
+        # 팀 페이지로 이동
+        team_url = f"https://www.ticketlink.co.kr/sports/137/{product_id}"
+        logger.info("  📡 경기 목록 페이지 이동: %s", team_url)
+        ok = await self.navigate(team_url, timeout=20.0)
+        if not ok:
+            logger.warning("  ⚠️ 페이지 로딩 실패 또는 타임아웃")
+            return []
+
+        # 추가 대기 (SPA 렌더링)
+        import asyncio
+        await asyncio.sleep(3)
+
+        # 경기 데이터 추출
+        result = await self._send_with_result("Runtime.evaluate", {
+            "expression": FETCH_GAMES_JS,
+            "returnByValue": True,
+        })
+        games = []
+        if result and "result" in result:
+            raw = result["result"].get("value", [])
+            for g in raw:
+                if g.get("scheduleId") or g.get("_strategy"):
+                    games.append(g)
+
+        if games:
+            # data-* 속성이나 URL에서 찾은 실제 경기만 필터링
+            real_games = [g for g in games if g.get("scheduleId") and not g.get("_strategy")]
+            debug_info = [g for g in games if g.get("_strategy")]
+            if real_games:
+                logger.info("  🎯 %d개 경기 발견", len(real_games))
+                for g in real_games:
+                    tid = g.get("text", "")[:40]
+                    logger.info("    ⚾ schedule=%s product=%s %s",
+                                g["scheduleId"], g.get("productId", "?"), tid)
+            else:
+                logger.info("  ℹ️ 경기 직접발견 없음, 디버그: %s", debug_info[:3])
+        else:
+            logger.warning("  ⚠️ 경기 정보를 찾을 수 없음")
+
+        return games
 
     # ── 정리 ──────────────────────────────────────────────────────
 

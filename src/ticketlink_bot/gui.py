@@ -679,6 +679,9 @@ class TicketlinkGUI(tk.Tk):
         self._cdp_schedule_id_var = tk.StringVar(value=hijack.get("schedule_id", ""))
         ttk.Entry(frame, textvariable=self._cdp_schedule_id_var, width=30).grid(
             row=row, column=1, sticky="w", padx=4, pady=2)
+        ttk.Button(frame, text="🎯 경기 불러오기",
+                   command=self._fetch_cdp_games).grid(
+            row=row, column=2, sticky="w", padx=4)
         row += 1
 
         # 설명
@@ -688,7 +691,7 @@ class TicketlinkGUI(tk.Tk):
             row=row, column=0, columnspan=3, sticky="w", padx=8)
         row += 1
         ttk.Label(frame,
-                  text="productId를 원하는 경기값으로 변경하여 예매 우회",
+                  text="[경기 불러오기] = CDP 연결 → 구단 페이지에서 경기목록 스크래핑",
                   font=("", 8), foreground="gray").grid(
             row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
         row += 1
@@ -1219,6 +1222,111 @@ class TicketlinkGUI(tk.Tk):
                 "product_id": self._cdp_product_id_var.get().strip(),
                 "schedule_id": self._cdp_schedule_id_var.get().strip(),
             }
+
+    # ── CDP 경기 불러오기 ──
+
+    def _fetch_cdp_games(self):
+        """CDP로 구단 페이지에서 경기 목록 스크래핑 → 선택 UI"""
+        product_id = self._cdp_product_id_var.get().strip()
+        if not product_id:
+            logger.warning("⚠️ Product ID 먼저 입력 후 [경기 불러오기] 클릭")
+            return
+        cdp_port = int(self._cdp_port_var.get() or "9222")
+        threading.Thread(target=self._do_fetch_cdp_games,
+                         args=(product_id, cdp_port), daemon=True).start()
+
+    def _do_fetch_cdp_games(self, product_id: str, cdp_port: int):
+        """백그라운드에서 CDP 경기 스크래핑 실행"""
+        try:
+            from .standalone import _fetch_games_from_cdp
+            logger.info("🔍 CDP 경기 목록 불러오는 중... (포트 %d, 구단 %s)",
+                        cdp_port, product_id)
+            games = _fetch_games_from_cdp(product_id, cdp_port=cdp_port)
+
+            if not games:
+                self.after(0, lambda: logger.warning(
+                    "⚠️ 경기 목록을 찾을 수 없습니다.\n"
+                    "Chrome CDP 연결 확인: --remote-debugging-port=%d", cdp_port))
+                return
+
+            # 실제 경기만 필터링 (data-* 또는 URL에서 추출된 것)
+            real_games = [g for g in games
+                          if g.get("scheduleId") and not g.get("_strategy")]
+            if not real_games:
+                self.after(0, lambda: logger.warning(
+                    "⚠️ 경기 데이터를 페이지에서 찾을 수 없습니다.\n"
+                    "티켓링크 페이지가 정상 로딩되었는지 확인하세요."))
+                return
+
+            # 경기 선택 다이얼로그 표시
+            self.after(0, self._show_game_selector, real_games)
+
+        except Exception as e:
+            logger.error("❌ 경기 목록 스크래핑 오류: %s", e)
+            self.after(0, lambda: logger.warning(
+                "⚠️ 오류: %s\nChrome CDP(--remote-debugging-port)가 실행 중인지 확인",
+                e))
+
+    def _show_game_selector(self, games: list[dict]):
+        """경기 선택 팝업"""
+        import tkinter as tk
+        from tkinter import ttk
+
+        win = tk.Toplevel(self._app)
+        win.title("⚾ 경기 선택")
+        win.geometry("550x400")
+        win.resizable(True, True)
+        win.transient(self._app)
+        win.grab_set()
+
+        ttk.Label(win, text="경기를 선택하면 Schedule ID가 자동 입력됩니다",
+                  font=("", 10)).pack(pady=(10, 5))
+
+        frame = ttk.Frame(win)
+        frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        cols = ("scheduleId", "team", "detail")
+        tree = ttk.Treeview(frame, columns=cols, show="headings",
+                            height=12, selectmode="browse")
+        tree.heading("scheduleId", text="경기코드")
+        tree.heading("team", text="구분")
+        tree.heading("detail", text="상세")
+        tree.column("scheduleId", width=120)
+        tree.column("team", width=100)
+        tree.column("detail", width=280)
+
+        scroll = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scroll.set)
+        tree.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+
+        for g in games:
+            sid = g.get("scheduleId", "")
+            pid = g.get("productId", "")
+            text = g.get("text", "")
+            href = g.get("href", "")
+            # productId로 팀명 찾기
+            from .cdp_hijack import PRODUCT_ID_TO_TEAM
+            team = PRODUCT_ID_TO_TEAM.get(pid, f"구단({pid})")
+            detail = text or href or f"scheduleId={sid}"
+            tree.insert("", "end", values=(sid, team, detail))
+
+        def on_select():
+            sel = tree.selection()
+            if not sel:
+                return
+            values = tree.item(sel[0], "values")
+            if values:
+                self._cdp_schedule_id_var.set(values[0])
+                logger.info("✅ Schedule ID 선택: %s", values[0])
+            win.destroy()
+
+        btn_frame = ttk.Frame(win)
+        btn_frame.pack(fill="x", pady=10)
+        ttk.Button(btn_frame, text="✅ 선택 완료", command=on_select).pack(
+            side="right", padx=10)
+        ttk.Button(btn_frame, text="취소",
+                   command=win.destroy).pack(side="right", padx=5)
 
     # ── 이중봇 실행 ──
 

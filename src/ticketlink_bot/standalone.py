@@ -106,6 +106,41 @@ def _close_cdp_hijack(hijack) -> None:
         pass
 
 
+def _fetch_games_from_cdp(product_id: str, cdp_port: int = 9222) -> list[dict]:
+    """CDP로 특정 구단의 경기 목록 스크래핑 (동기 래퍼)
+
+    Args:
+        product_id: 구단 productId
+        cdp_port: Chrome CDP 포트
+
+    Returns:
+        경기 목록 [{"scheduleId": ..., "productId": ..., "text": ...}]
+        또는 실패 시 빈 리스트
+    """
+    try:
+        from .cdp_hijack import CdpHijack
+        import asyncio
+
+        hijack = CdpHijack(cdp_port=cdp_port)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            ok = loop.run_until_complete(hijack.connect())
+            if not ok:
+                logger.warning("  ⚠️ CDP 연결 실패 (포트 %d)", cdp_port)
+                return []
+
+            games = loop.run_until_complete(hijack.fetch_games(product_id))
+            loop.run_until_complete(hijack.close())
+            return games
+        except Exception:
+            loop.close()
+            raise
+    except Exception as e:
+        logger.error("  ❌ 경기 목록 스크래핑 오류: %s", e)
+        return []
+
+
 # ================================================================
 #  새로고침 봇 (F6)
 # ================================================================
