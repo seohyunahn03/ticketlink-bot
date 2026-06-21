@@ -177,6 +177,17 @@ def _read_ids_from_cdp(cdp_port: int = 9222) -> dict:
 
     # 2차: HTTP /json 으로 모든 탭/팝업 스캔 (WebSocket 불필요)
     try:
+        # 디버그: 모든 페이지 URL 출력 (찾기 실패 시 원인 파악용)
+        try:
+            import urllib.request, json as _json
+            _resp = urllib.request.urlopen(f"http://127.0.0.1:{cdp_port}/json", timeout=3)
+            _all = _json.loads(_resp.read().decode())
+            for _t in _all:
+                if _t.get("type") == "page":
+                    logger.info("  📄 CDP 페이지: %s", _t.get("url", "")[:120])
+        except Exception:
+            pass
+
         popup = hijack._find_reserve_page_target()
         if popup:
             url = popup.get("url", "")

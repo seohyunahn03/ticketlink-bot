@@ -343,18 +343,26 @@ class CdpHijack:
         return {}
 
     def _find_reserve_page_target(self) -> Optional[dict]:
-        """CDP /json 에서 /reserve/product/ URL을 가진 페이지 타겟 찾기"""
+        """CDP /json 에서 예매 관련 URL을 가진 페이지 타겟 찾기"""
         try:
             resp = urllib.request.urlopen(
                 f"http://127.0.0.1:{self.cdp_port}/json", timeout=5
             )
             targets = json.loads(resp.read().decode())
-            for t in targets:
-                if t.get("type") == "page":
-                    url = t.get("url", "")
-                    if "/reserve/product/" in url:
-                        return t
-            # reserve/product 말고 scheduleId 있는 페이지만 찾기
+            # 우선순위: /reserve/product/ > /reserve/ > scheduleId= > ticketlink reserve
+            patterns = [
+                "/reserve/product/",
+                "/reserve/plan/",
+                "/reserve/gate/",
+                "/reserve/",
+            ]
+            for pattern in patterns:
+                for t in targets:
+                    if t.get("type") == "page":
+                        url = t.get("url", "")
+                        if pattern in url:
+                            return t
+            # fallback: scheduleId 쿼리파라미터
             for t in targets:
                 if t.get("type") == "page":
                     url = t.get("url", "")
@@ -373,10 +381,17 @@ class CdpHijack:
 
     @staticmethod
     def _parse_schedule_id(url: str) -> str:
-        """URL에서 scheduleId 추출"""
+        """URL에서 scheduleId 추출 (query param + path pattern)"""
         import re
+        # query param: ?scheduleId=XXX
         m = re.search(r"[?&]scheduleId=(\d+)", url)
-        return m.group(1) if m else ""
+        if m:
+            return m.group(1)
+        # path pattern: /reserve/plan/schedule/XXXXX
+        m = re.search(r"/reserve/plan/schedule/(\d+)", url)
+        if m:
+            return m.group(1)
+        return ""
 
     @staticmethod
     def _normalize_ids(raw: dict) -> dict:
