@@ -1303,11 +1303,11 @@ class TicketlinkGUI(tk.Tk):
         import tkinter as tk
         from tkinter import ttk
 
-        win = tk.Toplevel(self._app)
+        win = tk.Toplevel(self)
         win.title("⚾ 경기 선택")
         win.geometry("550x400")
         win.resizable(True, True)
-        win.transient(self._app)
+        win.transient(self)
         win.grab_set()
 
         ttk.Label(win, text="경기를 선택하면 Schedule ID가 자동 입력됩니다",

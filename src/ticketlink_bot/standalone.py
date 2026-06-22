@@ -16,6 +16,10 @@ from typing import Optional
 
 from .system_bot import SystemBot
 from .seats import find_seats_in_zones, find_consecutive_seats, find_seats_by_color
+
+logger = logging.getLogger("ticketlink_bot")
+
+
 def _get_zones(macro: dict) -> list[dict]:
     """하위호환: seat_zones가 없으면 seat_area/seat_color로 zone 생성"""
     zones = macro.get("seat_zones", [])
@@ -26,8 +30,6 @@ def _get_zones(macro: dict) -> list[dict]:
         if any(area):
             zones = [{"area": area, "color": color, "tolerance": tol}]
     return zones
-
-logger = logging.getLogger("ticketlink_bot")
 
 
 # ── CDP 폼 하이재킹 헬퍼 ──────────────────────────────────────
@@ -476,15 +478,13 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 1500) / 1000.0
-    seat_click_delay = delays.get("seat_click", 50) / 1000.0
+    seat_click_delay = delays.get("seat_click", 10) / 1000.0
     refresh_delay = delays.get("refresh", 300) / 1000.0
     section_move = delays.get("section_move", 100) / 1000.0
 
     max_retries = macro.get("max_retries", 30)
     max_screenshot_fails = macro.get("max_screenshot_fails", 5)
     ss = macro.get("seat_search", {})
-    row_tolerance = ss.get("row_tolerance", 18)
-    gap_tolerance = ss.get("gap_tolerance", 25)
     max_results_per_zone = ss.get("max_results_per_zone", 20)
 
     # ── CDP 폼 하이재킹 ──
@@ -570,7 +570,6 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         if consecutive_n > 1:
             found_group = find_consecutive_seats(
                 all_seats, n=consecutive_n,
-                row_tolerance=row_tolerance, gap_tolerance=gap_tolerance,
             )
         else:
             found_group = [all_seats[0]] if all_seats else []
@@ -718,15 +717,13 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 1500) / 1000.0
-    seat_click_delay = delays.get("seat_click", 50) / 1000.0
+    seat_click_delay = delays.get("seat_click", 10) / 1000.0
     refresh_delay = delays.get("refresh", 300) / 1000.0
     section_move = delays.get("section_move", 100) / 1000.0
     # 매크로 제어값 (설정 가능, 기본값은 config.py DEFAULT_CONFIG 참조)
     max_retries = macro.get("max_retries", 30)
     max_screenshot_fails = macro.get("max_screenshot_fails", 5)
     ss = macro.get("seat_search", {})
-    row_tolerance = ss.get("row_tolerance", 18)
-    gap_tolerance = ss.get("gap_tolerance", 25)
     max_results_per_zone = ss.get("max_results_per_zone", 20)
 
     # ── CDP 폼 하이재킹 ──
@@ -837,7 +834,6 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 if consecutive_n > 1:
                     found_group = find_consecutive_seats(
                         all_seats, n=consecutive_n,
-                        row_tolerance=row_tolerance, gap_tolerance=gap_tolerance,
                     )
                 else:
                     found_group = [all_seats[0]] if all_seats else []
@@ -850,7 +846,6 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 if consecutive_n > 1:
                     found_group = find_consecutive_seats(
                         seats, n=consecutive_n,
-                        row_tolerance=row_tolerance, gap_tolerance=gap_tolerance,
                     )
                 else:
                     found_group = [seats[0]] if seats else []

@@ -402,7 +402,6 @@ def _solve_parallel(
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import time
 
-    results: dict[int, tuple[str | None, float | str | None]] = {}
     vision_model = model
 
     def tess_worker():

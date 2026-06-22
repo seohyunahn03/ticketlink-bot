@@ -4,7 +4,7 @@
 import requests
 from typing import Optional
 
-from .config import load_config
+from src.config import load_config
 
 
 class Notifier:

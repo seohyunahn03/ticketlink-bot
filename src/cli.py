@@ -18,7 +18,12 @@ def cmd_config(args):
 
 def cmd_interpark(args):
     """인터파크 예매"""
-    from src.interpark import InterparkTicket
+    try:
+        from src.interpark import InterparkTicket
+    except ImportError:
+        print("❌ 인터파크 모듈(src/interpark.py)이 없습니다.")
+        print("   이 기능은 아직 구현되지 않았습니다.")
+        return
 
     bot = InterparkTicket()
     try:
@@ -52,7 +57,12 @@ def cmd_interpark(args):
 
 def cmd_ticketlink(args):
     """티켓링크 예매"""
-    from src.ticketlink import TicketlinkTicket
+    try:
+        from src.ticketlink import TicketlinkTicket
+    except ImportError:
+        print("❌ 티켓링크 모듈(src/ticketlink.py)이 없습니다.")
+        print("   이 기능은 아직 구현되지 않았습니다.")
+        return
 
     bot = TicketlinkTicket()
     try:

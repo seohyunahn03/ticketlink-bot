@@ -6,6 +6,7 @@
 """
 import io
 import logging
+import statistics
 from typing import Optional
 
 import numpy as np
@@ -202,20 +203,106 @@ def find_seats_in_zones(
     return {"zones": zone_results, "all": all_seats}
 
 
+def _calc_adaptive_tolerances(
+    seats: list[tuple[int, int]],
+    fallback_row: int = 18,
+    fallback_gap: int = 25,
+) -> tuple[int, int]:
+    """자동으로 좌석 좌표에서 row_tolerance와 gap_tolerance 계산.
+
+    좌석들의 실제 배치 간격을 분석하여 적응형 임계값을 반환.
+    데이터가 부족하면 fallback 값을 사용한다.
+
+    Args:
+        seats: [(x, y), ...] 좌석 좌표 목록
+        fallback_row: 데이터 부족 시 사용할 row_tolerance 기본값
+        fallback_gap: 데이터 부족 시 사용할 gap_tolerance 기본값
+
+    Returns:
+        (row_tolerance, gap_tolerance) 계산된 임계값
+    """
+    if len(seats) < 2:
+        return fallback_row, fallback_gap
+
+    # 1. 대략적인 y 기준 행 그룹화 (30px)
+    INITIAL_ROW_THRESHOLD = 30
+    row_groups: dict[int, list[int]] = {}
+    for sx, sy in seats:
+        matched = False
+        for ry in row_groups:
+            if abs(sy - ry) <= INITIAL_ROW_THRESHOLD:
+                row_groups[ry].append(sx)
+                matched = True
+                break
+        if not matched:
+            row_groups[sy] = [sx]
+
+    # 2. 각 행 내 x-gap 수집
+    x_gaps: list[int] = []
+    for ry, xs in row_groups.items():
+        xs.sort()
+        for i in range(1, len(xs)):
+            gap = xs[i] - xs[i - 1]
+            if gap > 0:
+                x_gaps.append(gap)
+
+    # 3. 행 간 y-gap 수집
+    row_ys = sorted(row_groups.keys())
+    y_gaps: list[int] = []
+    for i in range(1, len(row_ys)):
+        y_gaps.append(row_ys[i] - row_ys[i - 1])
+
+    # 4. 충분한 데이터가 있는지 판단
+    has_enough_x = len(x_gaps) >= 2
+    has_enough_y = len(y_gaps) >= 1
+
+    adaptive_row = fallback_row
+    adaptive_gap = fallback_gap
+
+    if has_enough_x:
+        # median x-gap × 1.2
+        median_x = statistics.median(x_gaps)
+        adaptive_gap = max(1, int(round(median_x * 1.2)))
+        logger.info(
+            "  📐 적응형 gap_tolerance: %d (median x-gap=%d, n=%d)",
+            adaptive_gap, median_x, len(x_gaps),
+        )
+
+    if has_enough_y:
+        # median y-gap × 0.5
+        median_y = statistics.median(y_gaps)
+        adaptive_row = max(1, int(round(median_y * 0.5)))
+        logger.info(
+            "  📐 적응형 row_tolerance: %d (median y-gap=%d, n=%d)",
+            adaptive_row, median_y, len(y_gaps),
+        )
+
+    if not has_enough_x and not has_enough_y:
+        logger.info(
+            "  📐 좌석 데이터 부족(%d석) — fallback 사용: row_tol=%d, gap_tol=%d",
+            len(seats), fallback_row, fallback_gap,
+        )
+
+    return adaptive_row, adaptive_gap
+
+
 def find_consecutive_seats(
     seats: list[tuple[int, int]],
     n: int = 2,
-    row_tolerance: int = 18,
-    gap_tolerance: int = 25,
+    row_tolerance: Optional[int] = None,
+    gap_tolerance: Optional[int] = None,
 ) -> list[tuple[int, int]]:
     """
     빈 좌석 목록에서 **N연석** (연속된 N개 좌석) 찾기.
 
+    row_tolerance와 gap_tolerance를 명시적으로 전달하지 않으면
+    실제 좌석 좌표 분포를 분석하여 자동 계산한다 (_calc_adaptive_tolerances).
+
     Args:
         seats: find_seats_by_color() 결과 [(x, y), ...]
         n: 몇 연석? (2=2연석, 3=3연석...)
-        row_tolerance: 같은 행 판단 y축 오차 (px)
-        gap_tolerance: 좌석 간격 최대 (px) — 이 이상 떨어지면 연속 아님
+        row_tolerance: 같은 행 판단 y축 오차 (px). None이면 자동 계산.
+        gap_tolerance: 좌석 간격 최대 (px). None이면 자동 계산.
 
     Returns:
         연석 그룹 [(x1,y1), (x2,y2), ...] 또는 빈 리스트
@@ -223,6 +310,14 @@ def find_consecutive_seats(
     if len(seats) < n:
         logger.info("  🔍 빈 좌석 부족: %d개 < %d연석", len(seats), n)
         return []
+
+    # 자동 계산 (명시적 값이 없을 때)
+    if row_tolerance is None or gap_tolerance is None:
+        auto_row, auto_gap = _calc_adaptive_tolerances(seats)
+        if row_tolerance is None:
+            row_tolerance = auto_row
+        if gap_tolerance is None:
+            gap_tolerance = auto_gap
 
     # y 기준 행 그룹화
     rows: dict[int, list[tuple[int, int]]] = {}

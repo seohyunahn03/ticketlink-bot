@@ -8,11 +8,24 @@
   python3.14 macro_cdp.py              # 현재 페이지 스캔
   python3.14 macro_cdp.py --auto       # 안심예매 → 좌석 자동
 """
-import asyncio, json, sys, argparse, time
+import asyncio, json, sys, argparse, time, urllib.request
 import websockets
 
-CDP = 'ws://localhost:9222/devtools/browser/3941751a-a76f'
+CDP_PORTS = [9222, 9223]
 DOMAIN = 'ticketlink.co.kr'
+
+def get_cdp_url():
+    """로컬 Chrome CDP WebSocket URL 자동 탐지"""
+    for port in CDP_PORTS:
+        try:
+            resp = urllib.request.urlopen(f'http://localhost:{port}/json/version', timeout=3)
+            data = json.loads(resp.read())
+            url = data.get('webSocketDebuggerUrl')
+            if url:
+                return url
+        except Exception:
+            continue
+    return None
 
 class Bot:
     def __init__(self):
@@ -21,7 +34,10 @@ class Bot:
         self.sid = None  # session id
     
     async def connect(self):
-        self.ws = await websockets.connect(CDP, max_size=10_000_000)
+        cdp_url = get_cdp_url()
+        if not cdp_url:
+            raise Exception('Chrome CDP 연결 실패. Chrome이 --remote-debugging-port=9222로 실행중인지 확인')
+        self.ws = await websockets.connect(cdp_url, max_size=10_000_000)
     
     async def cmd(self, method, params=None, sid=None):
         self.n += 1

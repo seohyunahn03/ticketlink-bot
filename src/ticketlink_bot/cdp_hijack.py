@@ -790,23 +790,34 @@ class CdpHijack:
         await self.ws.send(msg)
         return True
 
-    async def _send_with_result(self, method: str, params: dict) -> Optional[dict]:
-        """CDP 명령 전송 + 응답 대기"""
+    async def _send_with_result(self, method: str, params: dict, timeout: float = 30.0) -> Optional[dict]:
+        """CDP 명령 전송 + 응답 대기 (타임아웃 적용)
+
+        Args:
+            timeout: 응답 대기 최대 시간(초). 기본 30초.
+        """
         if not self.ws:
             return None
         CdpHijack._msg_id += 1
         msg_id = CdpHijack._msg_id
         msg = json.dumps({"id": msg_id, "method": method, "params": params})
         await self.ws.send(msg)
-        # 응답 수신 (메시지 ID 매칭)
-        while True:
-            raw = await self.ws.recv()
+        # 응답 수신 (메시지 ID 매칭) — 타임아웃 적용
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            remaining = deadline - asyncio.get_event_loop().time()
+            try:
+                raw = await asyncio.wait_for(self.ws.recv(), timeout=max(0.1, remaining))
+            except asyncio.TimeoutError:
+                continue
             try:
                 resp = json.loads(raw)
                 if resp.get("id") == msg_id:
                     return resp.get("result")
             except json.JSONDecodeError:
                 continue
+        logger.warning("  ⏰ CDP 명령 '%s' 응답 타임아웃 (%ds)", method, timeout)
+        return None
 
 
 # ── 동기 래퍼 (독립형 호출용) ──────────────────────────────────
