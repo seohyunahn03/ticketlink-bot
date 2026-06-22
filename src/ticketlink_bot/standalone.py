@@ -236,21 +236,23 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
 
     # ── 서버시간 파싱 ──
     server_time_str = cfg.get("booking", {}).get("server_time", "").strip()
-    target_epoch = 0
+    target_epoch = 0.0
     # 서버시간 오프셋 (HTTP Date 헤더 측정값, local clock 보정용)
     server_offset = float(cfg.get("booking", {}).get("server_time_offset", 0))
     if server_time_str:
         try:
-            parts = list(map(int, server_time_str.replace("-", ":").split(":")))
+            parts_str = server_time_str.replace("-", ":").split(":")
+            h = int(parts_str[0])
+            m = int(parts_str[1]) if len(parts_str) > 1 else 0
+            s = float(parts_str[2]) if len(parts_str) > 2 else 0.0  # float → ms 포함
             # 오늘 자정 epoch (local 기준)
             now = time.localtime()
             today_midnight = int(time.mktime((
                 now.tm_year, now.tm_mon, now.tm_mday,
                 0, 0, 0,
-                now.tm_wday, now.tm_yday, now.tm_isdst,
+                now.tm_wday, now.tm_yday, -1,
             )))
-            # 서버시간 기준 target epoch = 오늘 자정 + HH:MM:SS - offset 보정
-            h, m, s = parts[0], parts[1] if len(parts) > 1 else 0, parts[2] if len(parts) > 2 else 0
+            # 서버시간 기준 target epoch = 오늘 자정 + HH:MM:SS.sss - offset 보정
             local_target = today_midnight + h * 3600 + m * 60 + s
             # server_offset 만큼 보정 (local보다 server가 빠르면 offset > 0)
             target_epoch = local_target - server_offset
@@ -263,7 +265,7 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
                         server_offset * 1000)
         except (ValueError, IndexError) as e:
             logger.warning("  ⚠️ 서버시간 파싱 실패: %s — 즉시 새로고침", e)
-            target_epoch = 0
+            target_epoch = 0.0
 
     # ── 서버시간 동기화 (F5 스팸) ──
     if target_epoch:
@@ -271,22 +273,27 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
         pre_seconds = 3
         wait_seconds = max(0, target_epoch - time.time() - pre_seconds)
         if wait_seconds > 0:
-            logger.info("  ⏳ %d초 후 새로고침 시작...", wait_seconds)
+            logger.info("  ⏳ %.1f초 후 새로고침 시작...", wait_seconds)
             # 1초 단위로 대기하며 중지 확인
             while wait_seconds > 0:
                 if stop_event and stop_event.is_set():
                     result["message"] = "⏹️ 사용자 중지 (대기 중)"
                     return result
-                time.sleep(1)
-                wait_seconds -= 1
+                sleep_time = min(1.0, wait_seconds)
+                time.sleep(sleep_time)
+                wait_seconds -= sleep_time
         # -3초 ~ 0초 사이: F5 스팸
         logger.info("  🚀 새로고침 시작!")
-        spam_end = target_epoch + 2  # 2초 더
+        spam_end = target_epoch - 0.01  # 서버시간 10ms 전까지
         while time.time() < spam_end:
             if stop_event and stop_event.is_set():
                 result["message"] = "⏹️ 사용자 중지 (새로고침 중)"
                 return result
-            _reload_page(0.05)  # 50ms 간격 F5
+            remaining = spam_end - time.time()
+            if remaining > 0.1:
+                _reload_page(0.05)   # 100ms↑ → 50ms 간격
+            else:
+                _reload_page(0.008)  # 100ms↓ → 8ms 간격 (10ms 정밀도)
         # F5 스팸 종료 → 페이지 로딩 대기
         logger.info("  ⏳ 페이지 로딩 대기 중... (1초)")
         time.sleep(1.0)
