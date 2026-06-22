@@ -160,7 +160,12 @@ class CdpHijack:
         if not ws_url:
             return False
 
-        import websockets
+        try:
+            import websockets
+        except ImportError:
+            raise ImportError(
+                "websockets 라이브러리가 필요합니다. 설치: pip install websockets"
+            )
         self.ws = await websockets.connect(ws_url, max_size=None)
         logger.info("🔗 CDP 연결 완료 (%s)", ws_url[:60])
         return True

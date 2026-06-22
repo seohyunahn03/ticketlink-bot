@@ -9,6 +9,7 @@
 - 글로벌 핫키 (F6/ESC)
 """
 import logging
+import random
 import threading
 import time
 from typing import Optional
@@ -1021,13 +1022,18 @@ def _reload_page(delay: float = 1.0):
 
 # ── 유틸리티 (모듈 레벨) ──
 
-def _click(x: int, y: int, label: str = ""):
-    """좌표 클릭 + 로그"""
-    SystemBot.click(x, y)
-    logger.info("  🖱️ %s (%d, %d)", label, x, y)
+def _click(x: int, y: int, label: str = "", jitter: int = 3):
+    """좌표 클릭 + 랜덤 마우스 이동 (봇 탐지 회피)"""
+    jx = x + random.randint(-jitter, jitter)
+    jy = y + random.randint(-jitter, jitter)
+    SystemBot.move(jx, jy, duration=random.uniform(0.08, 0.25))
+    SystemBot.click(jx, jy)
+    logger.info("  🖱️ %s (%d,%d) → jitter=%d", label, x, y, jitter)
 
 
 def _wait(t: float):
-    """대기 + 로그"""
-    logger.debug("  ⏳ %.1f초 대기...", t)
-    time.sleep(t)
+    """대기 + 랜덤 지연 (봇 탐지 회피, ±15%)"""
+    varied = t * (1 + random.uniform(-0.15, 0.15))
+    varied = max(0.01, varied)  # 최소 10ms
+    logger.debug("  ⏳ %.1f초 대기... (varied: %.2f)", t, varied)
+    time.sleep(varied)
