@@ -230,26 +230,37 @@ class TicketlinkGUI(tk.Tk):
         _settings_outer = ttk.Frame(notebook)
         notebook.add(_settings_outer, text="⚙️ 설정")
         _settings_outer.grid_rowconfigure(0, weight=1)
+        _settings_outer.grid_rowconfigure(1, weight=0)
         _settings_outer.grid_columnconfigure(0, weight=1)
 
         _canvas = tk.Canvas(_settings_outer, bg=_AppStyle.BG, highlightthickness=0)
-        _scrollbar = ttk.Scrollbar(_settings_outer, orient="vertical", command=_canvas.yview)
+        _vscroll = ttk.Scrollbar(_settings_outer, orient="vertical", command=_canvas.yview)
+        _hscroll = ttk.Scrollbar(_settings_outer, orient="horizontal", command=_canvas.xview)
         self._settings_frame = ttk.Frame(_canvas)
         self._settings_frame.bind(
             "<Configure>",
             lambda e: _canvas.configure(scrollregion=_canvas.bbox("all")),
         )
         _canvas.create_window((0, 0), window=self._settings_frame, anchor="nw")
-        _canvas.configure(yscrollcommand=_scrollbar.set)
+        _canvas.configure(yscrollcommand=_vscroll.set, xscrollcommand=_hscroll.set)
 
         _canvas.grid(row=0, column=0, sticky="nsew")
-        _scrollbar.grid(row=0, column=1, sticky="ns")
+        _vscroll.grid(row=0, column=1, sticky="ns")
+        _hscroll.grid(row=1, column=0, sticky="ew")
 
         # 마우스 휠 스크롤 (Canvas 영역 진입/이탈)
         def _on_mousewheel(event):
             _canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        _canvas.bind("<Enter>", lambda e: _canvas.bind_all("<MouseWheel>", _on_mousewheel))
-        _canvas.bind("<Leave>", lambda e: _canvas.unbind_all("<MouseWheel>"))
+        def _on_shift_mousewheel(event):
+            _canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+        _canvas.bind("<Enter>", lambda e: (
+            _canvas.bind_all("<MouseWheel>", _on_mousewheel),
+            _canvas.bind_all("<Shift-MouseWheel>", _on_shift_mousewheel),
+        ))
+        _canvas.bind("<Leave>", lambda e: (
+            _canvas.unbind_all("<MouseWheel>"),
+            _canvas.unbind_all("<Shift-MouseWheel>"),
+        ))
         self._build_settings_tab()
 
         # ── 하단: 로그 + 버튼 ──
@@ -1233,9 +1244,6 @@ class TicketlinkGUI(tk.Tk):
     def _fetch_cdp_games(self):
         """CDP로 구단 페이지에서 경기 목록 스크래핑 → 선택 UI"""
         product_id = self._cdp_product_id_var.get().strip()
-        if not product_id:
-            logger.warning("⚠️ Product ID 먼저 입력 후 [경기 불러오기] 클릭")
-            return
         cdp_port = int(self._cdp_port_var.get() or "9222")
         threading.Thread(target=self._do_fetch_cdp_games,
                          args=(product_id, cdp_port), daemon=True).start()
@@ -1243,10 +1251,28 @@ class TicketlinkGUI(tk.Tk):
     def _do_fetch_cdp_games(self, product_id: str, cdp_port: int):
         """백그라운드에서 CDP 경기 스크래핑 실행"""
         try:
-            from .standalone import _fetch_games_from_cdp
-            logger.info("🔍 CDP 경기 목록 불러오는 중... (포트 %d, 구단 %s)",
-                        cdp_port, product_id)
-            games = _fetch_games_from_cdp(product_id, cdp_port=cdp_port)
+            # 1) 먼저 Network capture 방식 시도 (product_id 불필요)
+            from .cdp_hijack import fetch_games_via_network
+            logger.info("🔍 CDP Network capture로 경기 목록 불러오는 중... (포트 %d)",
+                        cdp_port)
+            games = fetch_games_via_network(cdp_port=cdp_port)
+
+            # Network capture 성공 여부 확인
+            if games and any(g.get("scheduleId") and g.get("productId")
+                             for g in games):
+                logger.info("✅ Network capture 성공: %d개 경기 발견", len(games))
+            else:
+                # 2) 실패 시 DOM 방식 fallback (product_id 필요)
+                if not product_id:
+                    self.after(0, lambda: logger.warning(
+                        "⚠️ 경기 목록을 불러올 수 없습니다.\n"
+                        "1) Network capture 실패\n"
+                        "2) 구단코드(Product ID) 미입력 → DOM 방식 fallback 불가\n"
+                        "Chrome CDP(--remote-debugging-port=%d) 실행 상태 확인", cdp_port))
+                    return
+                from .standalone import _fetch_games_from_cdp
+                logger.info("↩️ DOM 방식 fallback (구단 %s)", product_id)
+                games = _fetch_games_from_cdp(product_id, cdp_port=cdp_port)
 
             if not games:
                 self.after(0, lambda: logger.warning(
