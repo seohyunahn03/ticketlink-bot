@@ -80,6 +80,9 @@ DEFAULT_CONFIG = {
             "port": 9222,            # Chrome CDP 포트
             "product_id": "",         # 예: 한화 62162
             "schedule_id": "",        # 예: 1492740043
+            "auto_detect": False,     # Network capture 자동 탐지
+            "target_team": "",        # 자동 탐지 대상 팀명 (예: LG 트윈스)
+            "target_date": "",        # 자동 탐지 대상 날짜 (예: 2026-06-23)
         },
     },
     # 알림

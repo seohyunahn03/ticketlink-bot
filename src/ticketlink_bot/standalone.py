@@ -34,6 +34,9 @@ logger = logging.getLogger("ticketlink_bot")
 def _maybe_activate_cdp_hijack(cfg: dict):
     """CDP 하이재킹이 설정된 경우 연결 + 스크립트 주입
 
+    product_id/schedule_id 가 설정되지 않았지만 auto_detect=True 이면
+    CDP Network capture로 자동 탐지합니다.
+
     Returns:
         CdpHijack 인스턴스 (연결 성공 시) 또는 None
     """
@@ -44,6 +47,22 @@ def _maybe_activate_cdp_hijack(cfg: dict):
     product_id = hijack_cfg.get("product_id", "").strip()
     schedule_id = hijack_cfg.get("schedule_id", "").strip()
     port = int(hijack_cfg.get("port", 9222))
+    auto_detect = hijack_cfg.get("auto_detect", False)
+
+    # ── 자동 탐지: product_id 나 schedule_id 가 비었으면 Network capture ──
+    if (not product_id or not schedule_id) and auto_detect:
+        logger.info("  🔍 CDP Network capture 자동 탐지 활성화")
+        detected = auto_detect_game_id(cfg, cdp_port=port)
+        if detected.get("productId") and detected.get("scheduleId"):
+            product_id = detected["productId"]
+            schedule_id = detected["scheduleId"]
+            logger.info(
+                "  ✅ 자동 탐지 성공: product=%s schedule=%s",
+                product_id, schedule_id,
+            )
+        else:
+            logger.warning("  ⚠️ 자동 탐지 실패 — 수동 입력 필요")
+            return None
 
     if not product_id or not schedule_id:
         logger.warning("  ⚠️ CDP 하이재킹 활성화됨 but product_id/schedule_id 미설정")
@@ -205,6 +224,106 @@ def _read_ids_from_cdp(cdp_port: int = 9222) -> dict:
         pass
 
     return {}
+
+
+def auto_detect_game_id(cfg: dict, cdp_port: int = 9222) -> dict:
+    """CDP Network capture로 경기 ID(productId, scheduleId) 자동 탐지
+
+    mapi/sports/schedules API 응답을 가로채서 JSON을 파싱한 후
+    설정된 target_team / target_date 로 필터링하여 매칭된 경기 반환.
+
+    Args:
+        cfg: 설정 딕셔너리 (load_config 결과)
+        cdp_port: Chrome CDP 포트
+
+    Returns:
+        {"productId": "...", "scheduleId": "...", "homeTeamName": "...",
+         "awayTeamName": "...", "matchDate": "...", "matchTime": "..."}
+        또는 매칭 실패 시 빈 dict
+    """
+    hijack_cfg = cfg.get("macro", {}).get("cdp_hijack", {})
+    target_team = hijack_cfg.get("target_team", "").strip()
+    target_date = hijack_cfg.get("target_date", "").strip()
+
+    # fallback: booking.team
+    if not target_team:
+        target_team = cfg.get("booking", {}).get("team", "").strip()
+
+    logger.info("  🔍 CDP Network capture로 경기 ID 자동 탐지 중...")
+    logger.info(
+        "  🎯 대상: 팀=%s  날짜=%s",
+        target_team or "전체",
+        target_date or "전체",
+    )
+
+    from .cdp_hijack import fetch_games_via_network
+
+    games = fetch_games_via_network(cdp_port=cdp_port)
+    if not games:
+        logger.warning("  ⚠️ Network capture 결과 없음")
+        return {}
+
+    # ── 필터링 ──
+    matched = []
+    for g in games:
+        team_match = True
+        date_match = True
+
+        if target_team:
+            ht = g.get("homeTeamName", "")
+            at = g.get("awayTeamName", "")
+            team_match = target_team in ht or target_team in at
+
+        if target_date:
+            md = g.get("matchDate", "")
+            date_match = target_date in md
+
+        if team_match and date_match:
+            matched.append(g)
+
+    if not matched:
+        logger.warning(
+            "  ⚠️ 조건에 맞는 경기 없음 (팀=%s, 날짜=%s)",
+            target_team,
+            target_date,
+        )
+        logger.info("  ℹ️ 발견된 전체 경기:")
+        for g in games:
+            logger.info(
+                "    ⚾ %s vs %s | %s %s | product=%s schedule=%s",
+                g.get("homeTeamName"),
+                g.get("awayTeamName"),
+                g.get("matchDate"),
+                g.get("matchTime"),
+                g.get("productId"),
+                g.get("scheduleId"),
+            )
+        return {}
+
+    if len(matched) > 1:
+        logger.info(
+            "  ⚠️ 조건에 맞는 경기가 %d개 — 첫 번째 사용", len(matched)
+        )
+
+    g = matched[0]
+    result = {
+        "productId": g.get("productId", ""),
+        "scheduleId": g.get("scheduleId", ""),
+        "homeTeamName": g.get("homeTeamName", ""),
+        "awayTeamName": g.get("awayTeamName", ""),
+        "matchDate": g.get("matchDate", ""),
+        "matchTime": g.get("matchTime", ""),
+    }
+    logger.info(
+        "  ✅ 자동 탐지 완료: product=%s schedule=%s (%s vs %s, %s %s)",
+        result["productId"],
+        result["scheduleId"],
+        result["homeTeamName"],
+        result["awayTeamName"],
+        result["matchDate"],
+        result["matchTime"],
+    )
+    return result
 
 
 # ================================================================

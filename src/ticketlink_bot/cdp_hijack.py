@@ -525,6 +525,232 @@ class CdpHijack:
 
         return games
 
+    # ── CDP Network Capture (새 API) ─────────────────────────────
+
+    async def extract_games_via_network(self, timeout: float = 10.0) -> list[dict]:
+        """CDP Network capture로 mapi/sports/schedules API 응답에서 경기 목록 추출
+
+        Network.enable → Network.responseReceived 이벤트 대기 →
+        Network.getResponseBody 로 응답 본문 수신 → JSON 파싱
+
+        Args:
+            timeout: API 응답 대기 최대 시간 (초)
+
+        Returns:
+            [{"productId": ..., "scheduleId": ..., "matchDate": ...,
+              "matchTime": ..., "homeTeamName": ..., "awayTeamName": ...,
+              "matchStatus": ...}, ...]
+        """
+        if not self.ws:
+            logger.warning("  ⚠️ CDP 미연결 — 먼저 connect() 호출 필요")
+            return []
+
+        # 1. Network 활성화
+        await self._send("Network.enable", {})
+        logger.info("  📡 Network capture 활성화 — mapi/sports/schedules 응답 대기 중...")
+
+        import asyncio
+        deadline = asyncio.get_event_loop().time() + timeout
+        pending_request_ids: set[str] = set()
+
+        while asyncio.get_event_loop().time() < deadline:
+            remaining = deadline - asyncio.get_event_loop().time()
+            try:
+                raw = await asyncio.wait_for(
+                    self.ws.recv(), timeout=max(0.1, remaining)
+                )
+            except asyncio.TimeoutError:
+                continue
+            except Exception:
+                break
+
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+            method = msg.get("method")
+
+            # ── 응답 헤더 수신 ──
+            if method == "Network.responseReceived":
+                params = msg.get("params", {})
+                response = params.get("response", {})
+                url = response.get("url", "")
+
+                if "mapi/sports/schedules" in url:
+                    request_id = params.get("requestId")
+                    if request_id:
+                        logger.info(
+                            "  ✅ API 응답 발견 (headers): %s",
+                            url[:80],
+                        )
+                        # loadingFinished 대기 목록에 등록
+                        pending_request_ids.add(request_id)
+
+                        # 바로 시도 (성공 시 빠른 반환)
+                        await asyncio.sleep(0.3)
+                        body = await self._get_response_body(request_id)
+                        if body:
+                            games = self._parse_schedules_response(body)
+                            if games:
+                                return games
+
+            # ── 본문 수신 완료 ──
+            elif method == "Network.loadingFinished":
+                req_id = msg.get("params", {}).get("requestId")
+                if req_id in pending_request_ids:
+                    pending_request_ids.discard(req_id)
+                    logger.info("  ✅ API 응답 본문 수신 완료")
+                    body = await self._get_response_body(req_id)
+                    if body:
+                        games = self._parse_schedules_response(body)
+                        if games:
+                            return games
+
+        logger.warning("  ⏰ API 응답 대기 타임아웃 (%ds)", timeout)
+        return []
+
+    async def _get_response_body(self, request_id: str) -> Optional[str]:
+        """Network.getResponseBody로 응답 본문 가져오기"""
+        result = await self._send_with_result("Network.getResponseBody", {
+            "requestId": request_id,
+        })
+        if result:
+            body = result.get("body", "")
+            if result.get("base64Encoded"):
+                import base64
+                body = base64.b64decode(body).decode("utf-8", errors="replace")
+            return body
+        return None
+
+    @staticmethod
+    def _parse_schedules_response(body: str) -> list[dict]:
+        """mapi/sports/schedules API JSON 응답 파싱
+
+        다양한 응답 구조 지원:
+          - {"data": [...]}
+          - {"body": {"data": [...]}}
+          - 직접 리스트 [...]
+        """
+        import json as _json
+        try:
+            data = _json.loads(body)
+        except _json.JSONDecodeError:
+            logger.warning("  ⚠️ API 응답 JSON 파싱 실패")
+            return []
+
+        # 응답 구조별 games 배열 찾기
+        games_raw: list = []
+
+        if isinstance(data, dict):
+            # case 1: {"data": [...]}
+            games_raw = (
+                data.get("data")
+                or data.get("result")
+                or data.get("items")
+                or data.get("list")
+                or []
+            )
+            # case 2: {"body": {"data": [...]}} 중첩 구조
+            if not games_raw:
+                for key in ("body", "response", "result"):
+                    val = data.get(key)
+                    if isinstance(val, dict):
+                        games_raw = (
+                            val.get("data")
+                            or val.get("items")
+                            or val.get("list")
+                            or val.get("result")
+                            or []
+                        )
+                        if games_raw:
+                            break
+        elif isinstance(data, list):
+            # case 3: 직접 리스트
+            games_raw = data
+
+        if not games_raw:
+            preview = str(data)[:300]
+            logger.info(
+                "  ℹ️ 인식 가능한 경기 데이터 없음, 응답 구조: %s",
+                preview,
+            )
+            return []
+
+        games = []
+        for g in games_raw:
+            if not isinstance(g, dict):
+                continue
+            # 필드명 변환 (camelCase / snake_case 둘 다 지원)
+            game = {
+                "productId": str(
+                    g.get("productId")
+                    or g.get("product_id")
+                    or g.get("productID")
+                    or ""
+                ),
+                "scheduleId": str(
+                    g.get("scheduleId")
+                    or g.get("schedule_id")
+                    or g.get("scheduleID")
+                    or ""
+                ),
+                "matchDate": str(
+                    g.get("matchDate")
+                    or g.get("match_date")
+                    or g.get("gameDate")
+                    or ""
+                ),
+                "matchTime": str(
+                    g.get("matchTime")
+                    or g.get("match_time")
+                    or g.get("gameTime")
+                    or ""
+                ),
+                "homeTeamName": str(
+                    g.get("homeTeamName")
+                    or g.get("home_team_name")
+                    or g.get("homeTeam")
+                    or ""
+                ),
+                "awayTeamName": str(
+                    g.get("awayTeamName")
+                    or g.get("away_team_name")
+                    or g.get("awayTeam")
+                    or ""
+                ),
+                "matchStatus": str(
+                    g.get("matchStatus")
+                    or g.get("match_status")
+                    or g.get("status")
+                    or ""
+                ),
+            }
+            if game["productId"] or game["scheduleId"]:
+                games.append(game)
+
+        if games:
+            logger.info(
+                "  🎯 %d개 경기 발견 (Network capture)", len(games)
+            )
+            for g in games:
+                logger.info(
+                    "    ⚾ %s vs %s | %s %s | product=%s schedule=%s (%s)",
+                    g["homeTeamName"],
+                    g["awayTeamName"],
+                    g["matchDate"],
+                    g["matchTime"],
+                    g["productId"],
+                    g["scheduleId"],
+                    g["matchStatus"],
+                )
+        else:
+            logger.warning(
+                "  ⚠️ API 응답에서 productId/scheduleId 찾을 수 없음"
+            )
+
+        return games
+
     # ── 정리 ──────────────────────────────────────────────────────
 
     async def close(self):
@@ -576,3 +802,44 @@ class CdpHijack:
                     return resp.get("result")
             except json.JSONDecodeError:
                 continue
+
+
+# ── 동기 래퍼 (독립형 호출용) ──────────────────────────────────
+
+
+def fetch_games_via_network(
+    product_id: str = "", cdp_port: int = 9222
+) -> list[dict]:
+    """CDP Network capture로 경기 목록 가져오기 (동기 래퍼)
+
+    새 이벤트 루프에서 CdpHijack.extract_games_via_network() 실행.
+
+    Args:
+        product_id: (unused in capture, kept for API compat) 구단 productId
+        cdp_port: Chrome CDP 포트 (--remote-debugging-port)
+
+    Returns:
+        경기 목록 [{"productId": ..., "scheduleId": ..., ...}]
+        또는 실패 시 빈 리스트
+    """
+    try:
+        hijack = CdpHijack(cdp_port=cdp_port)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            ok = loop.run_until_complete(hijack.connect())
+            if not ok:
+                logger.warning("  ⚠️ CDP 연결 실패 (포트 %d)", cdp_port)
+                return []
+
+            games = loop.run_until_complete(
+                hijack.extract_games_via_network()
+            )
+            loop.run_until_complete(hijack.close())
+            return games
+        except Exception:
+            loop.close()
+            raise
+    except Exception as e:
+        logger.error("  ❌ Network capture 오류: %s", e)
+        return []
