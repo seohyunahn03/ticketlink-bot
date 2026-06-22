@@ -476,15 +476,15 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 1500) / 1000.0
-    seat_click_delay = delays.get("seat_click", 10) / 1000.0
+    seat_click_delay = delays.get("seat_click", 50) / 1000.0
     refresh_delay = delays.get("refresh", 300) / 1000.0
     section_move = delays.get("section_move", 100) / 1000.0
 
     max_retries = macro.get("max_retries", 30)
     max_screenshot_fails = macro.get("max_screenshot_fails", 5)
     ss = macro.get("seat_search", {})
-    row_tolerance = ss.get("row_tolerance", 30)
-    gap_tolerance = ss.get("gap_tolerance", 40)
+    row_tolerance = ss.get("row_tolerance", 18)
+    gap_tolerance = ss.get("gap_tolerance", 25)
     max_results_per_zone = ss.get("max_results_per_zone", 20)
 
     # ── CDP 폼 하이재킹 ──
@@ -718,15 +718,15 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 1500) / 1000.0
-    seat_click_delay = delays.get("seat_click", 10) / 1000.0
+    seat_click_delay = delays.get("seat_click", 50) / 1000.0
     refresh_delay = delays.get("refresh", 300) / 1000.0
     section_move = delays.get("section_move", 100) / 1000.0
     # 매크로 제어값 (설정 가능, 기본값은 config.py DEFAULT_CONFIG 참조)
     max_retries = macro.get("max_retries", 30)
     max_screenshot_fails = macro.get("max_screenshot_fails", 5)
     ss = macro.get("seat_search", {})
-    row_tolerance = ss.get("row_tolerance", 30)
-    gap_tolerance = ss.get("gap_tolerance", 40)
+    row_tolerance = ss.get("row_tolerance", 18)
+    gap_tolerance = ss.get("gap_tolerance", 25)
     max_results_per_zone = ss.get("max_results_per_zone", 20)
 
     # ── CDP 폼 하이재킹 ──
@@ -1017,12 +1017,12 @@ def _reload_page(delay: float = 1.0):
     """F5 키로 페이지 새로고침"""
     SystemBot.press("f5")
     if delay:
-        time.sleep(delay)
+        _wait(delay)
 
 
 # ── 유틸리티 (모듈 레벨) ──
 
-def _click(x: int, y: int, label: str = "", jitter: int = 3):
+def _click(x: int, y: int, label: str = "", jitter: int = 5):
     """좌표 클릭 + 랜덤 마우스 이동 (봇 탐지 회피)"""
     jx = x + random.randint(-jitter, jitter)
     jy = y + random.randint(-jitter, jitter)
@@ -1032,8 +1032,8 @@ def _click(x: int, y: int, label: str = "", jitter: int = 3):
 
 
 def _wait(t: float):
-    """대기 + 랜덤 지연 (봇 탐지 회피, ±15%)"""
-    varied = t * (1 + random.uniform(-0.15, 0.15))
+    """대기 + 랜덤 지연 (봇 탐지 회피, ±25%)"""
+    varied = t * (1 + random.uniform(-0.25, 0.25))
     varied = max(0.01, varied)  # 최소 10ms
     logger.debug("  ⏳ %.1f초 대기... (varied: %.2f)", t, varied)
     time.sleep(varied)

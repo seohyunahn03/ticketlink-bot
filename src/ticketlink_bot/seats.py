@@ -205,8 +205,8 @@ def find_seats_in_zones(
 def find_consecutive_seats(
     seats: list[tuple[int, int]],
     n: int = 2,
-    row_tolerance: int = 30,
-    gap_tolerance: int = 40,
+    row_tolerance: int = 18,
+    gap_tolerance: int = 25,
 ) -> list[tuple[int, int]]:
     """
     빈 좌석 목록에서 **N연석** (연속된 N개 좌석) 찾기.
