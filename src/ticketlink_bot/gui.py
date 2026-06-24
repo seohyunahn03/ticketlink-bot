@@ -1367,13 +1367,15 @@ class TicketlinkGUI(tk.Tk):
         frame = ttk.Frame(win)
         frame.pack(fill="both", expand=True, padx=10, pady=5)
 
-        cols = ("scheduleId", "team", "detail")
+        cols = ("scheduleId", "productId", "team", "detail")
         tree = ttk.Treeview(frame, columns=cols, show="headings",
                             height=12, selectmode="browse")
         tree.heading("scheduleId", text="경기코드")
+        tree.heading("productId", text="구단코드")
         tree.heading("team", text="구분")
         tree.heading("detail", text="상세")
         tree.column("scheduleId", width=120)
+        tree.column("productId", width=0, minwidth=0, stretch=False)  # 숨김
         tree.column("team", width=100)
         tree.column("detail", width=280)
 
@@ -1391,7 +1393,7 @@ class TicketlinkGUI(tk.Tk):
             from .cdp_hijack import PRODUCT_ID_TO_TEAM
             team = PRODUCT_ID_TO_TEAM.get(pid, f"구단({pid})")
             detail = text or href or f"scheduleId={sid}"
-            tree.insert("", "end", values=(sid, team, detail))
+            tree.insert("", "end", values=(sid, pid, team, detail))
 
         def on_select():
             sel = tree.selection()
@@ -1400,7 +1402,9 @@ class TicketlinkGUI(tk.Tk):
             values = tree.item(sel[0], "values")
             if values:
                 self._cdp_schedule_id_var.set(values[0])
-                logger.info("✅ Schedule ID 선택: %s", values[0])
+                self._cdp_product_id_var.set(values[1])
+                logger.info("✅ Schedule ID=%s / Product ID=%s 선택",
+                            values[0], values[1])
             win.destroy()
 
         btn_frame = ttk.Frame(win)
