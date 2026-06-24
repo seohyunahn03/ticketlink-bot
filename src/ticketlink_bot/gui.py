@@ -375,6 +375,30 @@ class TicketlinkGUI(tk.Tk):
 
         ttk.Label(frame, text="", font=_AppStyle.FONT_SMALL).grid(row=len(fields), column=0, pady=8)
 
+        # ── 좌표 전체 초기화 버튼 ──
+        reset_frame = ttk.Frame(frame)
+        reset_frame.grid(row=len(fields) + 1, column=0, columnspan=3, pady=4)
+        ttk.Button(
+            reset_frame, text="🗑️ 좌표 전체 초기화",
+            command=self._reset_all_coords,
+            style="Danger.TButton",
+        ).pack(side="left", padx=4)
+        ttk.Label(
+            reset_frame, text="모든 좌표를 (0, 0)으로 리셋",
+            font=_AppStyle.FONT_SMALL, foreground=_AppStyle.SURFACE2,
+        ).pack(side="left", padx=4)
+
+    # ── 좌표 초기화 ──
+    def _reset_all_coords(self):
+        """모든 좌표를 (0, 0)으로 초기화"""
+        if not messagebox.askyesno("좌표 초기화",
+                                    "모든 좌표를 (0, 0)으로 초기화할까요?",
+                                    parent=self):
+            return
+        for key, var in self._coord_vars.items():
+            var.set("0, 0")
+        logger.info("🗑️ 모든 좌표가 (0, 0)으로 초기화되었습니다")
+
     # ── 좌석 영역 탭 ──
 
     def _build_zone_tab(self):

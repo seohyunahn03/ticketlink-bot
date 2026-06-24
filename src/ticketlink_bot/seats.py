@@ -205,13 +205,19 @@ def find_seats_in_zones(
 
 def _calc_adaptive_tolerances(
     seats: list[tuple[int, int]],
-    fallback_row: int = 18,
+    fallback_row: int = 12,
     fallback_gap: int = 25,
 ) -> tuple[int, int]:
     """자동으로 좌석 좌표에서 row_tolerance와 gap_tolerance 계산.
 
     좌석들의 실제 배치 간격을 분석하여 적응형 임계값을 반환.
     데이터가 부족하면 fallback 값을 사용한다.
+
+    행 임계값 계산 방식 (v0.9.29 개선):
+      - y정렬 후 최대 y-gap = 행 간격으로 추정
+      - 행 임계값 = 추정 행간 × 0.6 (≥10px)
+      - 하드코딩된 15px → 데이터 기반 자동 계산으로 변경
+        (행 내 y변동이 큰 좌석맵에서도 안정적 그룹화)
 
     Args:
         seats: [(x, y), ...] 좌석 좌표 목록
@@ -224,8 +230,30 @@ def _calc_adaptive_tolerances(
     if len(seats) < 2:
         return fallback_row, fallback_gap
 
-    # 1. 대략적인 y 기준 행 그룹화 (30px)
-    INITIAL_ROW_THRESHOLD = 15
+    # 0) y정렬 후 모든 y-gap 분석 → 행 간격 추정
+    sorted_seats = sorted(seats, key=lambda s: s[1])
+    y_gaps_raw: list[int] = []
+    for i in range(1, len(sorted_seats)):
+        gap = sorted_seats[i][1] - sorted_seats[i - 1][1]
+        if gap > 0:
+            y_gaps_raw.append(gap)
+
+    if y_gaps_raw:
+        # max y-gap = 행 간격 (within-row gap < between-row gap)
+        estimated_row_gap = max(y_gaps_raw)
+        # Adaptive threshold: 60% of row gap, min 10px
+        # 0.6 × row_gap < row_gap → 행 병합 방지
+        # ≥10px → 행 내 y변동 허용
+        INITIAL_ROW_THRESHOLD = max(10, int(round(estimated_row_gap * 0.6)))
+        logger.info(
+            "  📐 적응형 행 임계값=%dpx (추정 행간=%dpx, %d개 y-gap 분석)",
+            INITIAL_ROW_THRESHOLD, estimated_row_gap, len(y_gaps_raw),
+        )
+    else:
+        INITIAL_ROW_THRESHOLD = 15
+        logger.info("  📐 y-gap 데이터 없음 — 기본 행 임계값=15px")
+
+    # 1) y 기준 행 그룹화 (adaptive threshold)
     row_groups: dict[int, list[int]] = {}
     for sx, sy in seats:
         matched = False
