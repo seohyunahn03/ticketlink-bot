@@ -55,6 +55,8 @@ def find_seats_by_color(
         ax2 = max(0, min(ax2, w))
         ay1 = max(0, min(ay1, h))
         ay2 = max(0, min(ay2, h))
+        if ax1 > ax2: ax1, ax2 = ax2, ax1
+        if ay1 > ay2: ay1, ay2 = ay2, ay1
         pixels = pixels[ay1:ay2, ax1:ax2]
     else:
         ax1, ay1 = 0, 0

@@ -504,9 +504,8 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
             logger.warning("  ⏹️ %s", result["message"])
+            _close_cdp_hijack(_cdp_hijack)
             return result
-
-        # 캡차 입력창 클릭 (좌표가 설정된 경우)
         ci = macro.get("captcha_input", [0, 0])
         if ci[0] != 0 or ci[1] != 0:
             _click(ci[0], ci[1], "캡차 입력창")
@@ -529,6 +528,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     logger.info("  🏁 전처리: 구역선택 → 직접선택 → 안내창확인")
     if not _do_preroll(macro, delays, stop_event, section_move, click_wait):
         result["message"] = "⏹️ 사용자 중지 (전처리 중)"
+        _close_cdp_hijack(_cdp_hijack)
         return result
 
     # ── 좌석 검색 ──
@@ -536,6 +536,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     if not seat_zones:
         result["message"] = "❌ 좌석 검색 영역 미설정 — 설정 탭에서 좌석 영역을 지정하세요."
         logger.warning(result["message"])
+        _close_cdp_hijack(_cdp_hijack)
         return result
 
     consecutive_n = macro.get("consecutive_seats", 2)
@@ -553,6 +554,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
             logger.warning("  ⏹️ %s", result["message"])
+            _close_cdp_hijack(_cdp_hijack)
             return result
 
         png = SystemBot.screenshot()
@@ -561,6 +563,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
             logger.warning("  ⚠️ 스크린샷 실패 (%d/%d)", screenshot_fails, max_screenshot_fails)
             if screenshot_fails >= max_screenshot_fails:
                 result["message"] = f"스크린샷 연속 실패 ({max_screenshot_fails}회)"
+                _close_cdp_hijack(_cdp_hijack)
                 return result
             continue
         screenshot_fails = 0
@@ -611,17 +614,20 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         logger.info("  🔁 전처리 재실행 (구역선택 → 직접선택 → 안내창확인)")
         if not _do_preroll(macro, delays, stop_event, section_move, click_wait):
             result["message"] = "⏹️ 사용자 중지 (재시도 전처리 중)"
+            _close_cdp_hijack(_cdp_hijack)
             return result
 
     if not found_group:
         result["message"] = f"빈 좌석 없음 ({consecutive_n}연석, {max_retries}회)"
         logger.warning("  ⚠️ %s", result["message"])
+        _close_cdp_hijack(_cdp_hijack)
         return result
 
     # ── 좌석 클릭 ──
     for i, (sx, sy) in enumerate(found_group):
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지 (좌석 선택 중)"
+            _close_cdp_hijack(_cdp_hijack)
             return result
         _click(sx, sy, f"좌석선택({i+1})")
         _wait(seat_click_delay)
@@ -631,6 +637,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     if c3[0] != 0 or c3[1] != 0:
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
+            _close_cdp_hijack(_cdp_hijack)
             return result
         _wait(0.5)
         _click(c3[0], c3[1], "선택완료")
@@ -641,6 +648,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     if c4[0] != 0 or c4[1] != 0:
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
+            _close_cdp_hijack(_cdp_hijack)
             return result
         _wait(0.5)
         _click(c4[0], c4[1], "결제하기")
@@ -774,6 +782,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
             logger.warning("  ⏹️ %s", result["message"])
+            _close_cdp_hijack(_cdp_hijack)
             return result
 
         logger.info("  🔍 캡차 처리 중...")
@@ -793,6 +802,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     logger.info("  🏁 전처리: 구역선택 → 직접선택 → 안내창확인")
     if not _do_preroll(macro, delays, stop_event, section_move, click_wait):
         result["message"] = "⏹️ 사용자 중지 (전처리 중)"
+        _close_cdp_hijack(_cdp_hijack)
         return result
 
     # ===== 4. 좌석 검색 (시스템 스크린샷) =====
@@ -813,6 +823,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             if stop_event and stop_event.is_set():
                 result["message"] = "⏹️ 사용자 중지"
                 logger.warning("  ⏹️ %s", result["message"])
+                _close_cdp_hijack(_cdp_hijack)
                 return result
 
             # 시스템 전체화면 스크린샷
@@ -823,6 +834,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 if screenshot_fails >= max_screenshot_fails:
                     logger.error("  ❌ 스크린샷 연속 실패 — 중단")
                     result["message"] = f"스크린샷 연속 실패 ({max_screenshot_fails}회)"
+                    _close_cdp_hijack(_cdp_hijack)
                     return result
                 continue
 
@@ -881,6 +893,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
             logger.info("  🔁 전처리 재실행 (구역선택 → 직접선택 → 안내창확인)")
             if not _do_preroll(macro, delays, stop_event, section_move, click_wait):
                 result["message"] = "⏹️ 사용자 중지 (재시도 전처리 중)"
+                _close_cdp_hijack(_cdp_hijack)
                 return result
 
         if found_group:
@@ -888,16 +901,19 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
                 if stop_event and stop_event.is_set():
                     result["message"] = "⏹️ 사용자 중지 (좌석 선택 중)"
                     logger.warning("  ⏹️ %s", result["message"])
+                    _close_cdp_hijack(_cdp_hijack)
                     return result
                 _click(sx, sy, f"좌석선택({i+1})")
                 _wait(seat_click_delay)
         else:
             result["message"] = f"빈 좌석 없음 ({consecutive_n}연석, {max_retries}회)"
             logger.warning("  ⚠️ %s", result["message"])
+            _close_cdp_hijack(_cdp_hijack)
             return result
     else:
         result["message"] = "❌ 좌석 검색 영역 미설정 — 설정 탭에서 좌석 영역을 지정하세요."
         logger.warning(result["message"])
+        _close_cdp_hijack(_cdp_hijack)
         return result
 
     # ===== 5. 선택완료 =====
@@ -906,6 +922,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
             logger.warning("  ⏹️ %s", result["message"])
+            _close_cdp_hijack(_cdp_hijack)
             return result
         _wait(0.5)
         _click(c3[0], c3[1], "선택완료")
@@ -917,6 +934,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지"
             logger.warning("  ⏹️ %s", result["message"])
+            _close_cdp_hijack(_cdp_hijack)
             return result
         _wait(0.5)
         _click(c4[0], c4[1], "결제하기")
