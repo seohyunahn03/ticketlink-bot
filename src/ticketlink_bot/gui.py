@@ -753,7 +753,7 @@ class TicketlinkGUI(tk.Tk):
         try:
             from .oauth import openai_oauth_login
             logger.info("🤖 Codex OAuth 로그인 시작... (브라우저가 열립니다)")
-            tokens = openai_oauth_login(timeout_seconds=120.0, open_browser=True)
+            tokens = openai_oauth_login(timeout_seconds=120.0)
             if tokens and tokens.get("access_token"):
                 logger.info("✅ Codex OAuth 로그인 완료! (%d자 토큰)",
                             len(tokens["access_token"]))
