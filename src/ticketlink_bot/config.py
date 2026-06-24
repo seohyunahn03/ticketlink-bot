@@ -60,7 +60,7 @@ DEFAULT_CONFIG = {
         "consecutive_seats": 2, # 몇 연석? (1=개별, 2=2연석...)
         "delays": {
             "click_wait": 1500,  # 클릭 후 대기(ms) — v0.9.8 속도최적화
-            "seat_click": 10,    # 좌석 잡는 순간 딜레이(ms)
+            "seat_click": 80,    # 좌석 클릭 간격(ms) — 탐지 회피용
             "section_move": 100, # 구역 이동 딜레이(ms) — v0.9.8 속도최적화
             "refresh": 300,      # 새로고침 간격(ms) — v0.9.8 속도최적화
             "captcha_typing_delay": 50,  # 캡차 글자간 입력 간격(ms) — 안전한 속도

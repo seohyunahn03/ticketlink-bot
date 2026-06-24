@@ -571,7 +571,7 @@ class TicketlinkGUI(tk.Tk):
 
         delay_fields = [
             ('click_wait', '클릭 후 대기(ms):', '1500'),
-            ('seat_click', '좌석 딜레이(ms):', '10'),
+            ('seat_click', '좌석 딜레이(ms):', '80'),
             ('section_move', '구역 이동 딜레이(ms):', '100'),
             ('refresh', '새로고침 간격(ms):', '300'),
             ('captcha_typing_delay', '캡차 입력 간격(ms):', '50'),
@@ -1155,7 +1155,7 @@ class TicketlinkGUI(tk.Tk):
         self._prefer_seat_var.set(booking.get("prefer_seat", ""))
         delays = macro.get("delays", {})
         self._settings_vars["click_wait"].set(str(delays.get("click_wait", 1500)))
-        self._settings_vars["seat_click"].set(str(delays.get("seat_click", 10)))
+        self._settings_vars["seat_click"].set(str(delays.get("seat_click", 80)))
         self._settings_vars["section_move"].set(str(delays.get("section_move", 100)))
         self._settings_vars["refresh"].set(str(delays.get("refresh", 300)))
         self._settings_vars["captcha_typing_delay"].set(str(delays.get("captcha_typing_delay", 50)))
@@ -1254,7 +1254,7 @@ class TicketlinkGUI(tk.Tk):
             try:
                 delays[k] = int(self._settings_vars[k].get())
             except (ValueError, KeyError):
-                delays[k] = {"click_wait": 1500, "seat_click": 10, "section_move": 100, "refresh": 300, "captcha_typing_delay": 50}.get(k, 0)
+                delays[k] = {"click_wait": 1500, "seat_click": 80, "section_move": 100, "refresh": 300, "captcha_typing_delay": 50}.get(k, 0)
 
         for k in ("max_retries", "max_screenshot_fails"):
             try:

@@ -624,12 +624,14 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         return result
 
     # ── 좌석 클릭 ──
+    logger.info("  🪑 좌석창 진입 — 1초 탐색 후 클릭 (탐지 회피)")
+    _wait(1.0)
     for i, (sx, sy) in enumerate(found_group):
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지 (좌석 선택 중)"
             _close_cdp_hijack(_cdp_hijack)
             return result
-        _click(sx, sy, f"좌석선택({i+1})")
+        _click(sx, sy, f"좌석선택({i+1})", jitter=8)
         _wait(seat_click_delay)
 
     # ── 선택완료 ──
@@ -1039,7 +1041,7 @@ def _click(x: int, y: int, label: str = "", jitter: int = 5):
     """좌표 클릭 + 랜덤 마우스 이동 (봇 탐지 회피)"""
     jx = x + random.randint(-jitter, jitter)
     jy = y + random.randint(-jitter, jitter)
-    SystemBot.move(jx, jy, duration=random.uniform(0.03, 0.10))
+    SystemBot.move(jx, jy, duration=random.uniform(0.05, 0.18))
     SystemBot.click(jx, jy)
     logger.info("  🖱️ %s (%d,%d) → jitter=%d", label, x, y, jitter)
 
