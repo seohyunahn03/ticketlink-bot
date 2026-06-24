@@ -585,13 +585,26 @@ def openai_oauth_login(timeout_seconds=120):
         logger.info("   ✅ 기존 Codex OAuth 토큰 발견: %s", codex_auth_path)
         return _import_codex_tokens(codex_auth_path)
 
-    # 2) Codex CLI --device-auth 실행 (브라우저에서 OAuth)
+    # 2) npx 찾기 (PATH + 일반적인 설치 경로)
+    import shutil
+    npx_path = shutil.which("npx")
+    if not npx_path:
+        # Hermes/node 경로 fallback
+        hermes_npx = os.path.expanduser("~/.hermes/node/bin/npx")
+        if os.path.isfile(hermes_npx):
+            npx_path = hermes_npx
+        else:
+            raise RuntimeError(
+                "npx를 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요.\n"
+                "  설치: https://nodejs.org/\n"
+                "  또는: brew install node"
+            )
     logger.info("   🔑 Codex CLI 로그인 실행 중... (브라우저가 열립니다)")
     logger.info("   (처음이면 npm/npx 패키지 다운로드에 시간이 소요될 수 있음)")
 
     try:
         result = subprocess.run(
-            ["npx", "@openai/codex", "login", "--device-auth"],
+            [npx_path, "@openai/codex", "login", "--device-auth"],
             capture_output=True, text=True,
             timeout=timeout_seconds,
         )
