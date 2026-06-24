@@ -331,6 +331,26 @@ class CdpHijack:
             url = popup.get("url", "")
             pid = self._parse_product_id(url)
             sid = self._parse_schedule_id(url)
+
+            # URL에 productId가 없으면 → 팝업에 WS 연결해서 DOM에서 추출
+            if not pid and popup.get("webSocketDebuggerUrl"):
+                logger.info("  🔍 팝업 DOM에서 productId 추출 시도...")
+                try:
+                    popup_data = await self._extract_ids_from_popup_ws(
+                        popup["webSocketDebuggerUrl"]
+                    )
+                    if popup_data:
+                        pid = (pid or popup_data.get("productId_from_form")
+                               or popup_data.get("productId_from_url") or "")
+                        sid = (sid or popup_data.get("scheduleId_from_form")
+                               or popup_data.get("scheduleId_from_url") or "")
+                        if popup_data.get("url"):
+                            url = popup_data["url"]
+                        if pid:
+                            logger.info("  ✅ 팝업 DOM에서 productId=%s 발견", pid)
+                except Exception as e:
+                    logger.debug("  ⚠️ 팝업 WS 추출 실패: %s", e)
+
             if pid or sid:
                 logger.info("  ✅ 예매 팝업 발견: %s", url[:80])
                 return self._normalize_ids({
@@ -397,6 +417,45 @@ class CdpHijack:
         if m:
             return m.group(1)
         return ""
+
+    async def _extract_ids_from_popup_ws(self, ws_url: str) -> dict:
+        """팝업 WebSocket에 임시 연결 → DOM에서 productId/scheduleId 추출
+
+        /reserve/plan/schedule/XXX 형식 URL은 productId가 없으므로
+        팝업 페이지의 hidden form input에서 직접 읽어야 함.
+        """
+        import asyncio
+        import websockets
+        import json as _json
+        try:
+            async with websockets.connect(
+                ws_url, max_size=2 ** 20, open_timeout=5,
+            ) as tmp_ws:
+                cmd = _json.dumps({
+                    "id": 1, "method": "Runtime.evaluate",
+                    "params": {
+                        "expression": """
+                            (() => {
+                                const res = {};
+                                const pi = document.querySelector('input[name="productId"]');
+                                if (pi) res.productId_from_form = pi.value;
+                                const si = document.querySelector('input[name="scheduleId"]');
+                                if (si) res.scheduleId_from_form = si.value;
+                                res.url = window.location.href;
+                                const pidMatch = window.location.href.match(/\\/reserve\\/product\\/(\\d+)/);
+                                if (pidMatch) res.productId_from_url = pidMatch[1];
+                                return res;
+                            })()
+                        """,
+                        "returnByValue": True,
+                    },
+                })
+                await tmp_ws.send(cmd)
+                resp = await asyncio.wait_for(tmp_ws.recv(), timeout=5)
+                data = _json.loads(resp)
+                return data.get("result", {}).get("value", {})
+        except Exception:
+            return {}
 
     @staticmethod
     def _normalize_ids(raw: dict) -> dict:
