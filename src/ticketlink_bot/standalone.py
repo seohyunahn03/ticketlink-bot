@@ -478,7 +478,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 1500) / 1000.0
-    seat_click_delay = delays.get("seat_click", 10) / 1000.0
+    seat_click_delay = delays.get("seat_click", 30) / 1000.0
     refresh_delay = delays.get("refresh", 300) / 1000.0
     section_move = delays.get("section_move", 100) / 1000.0
 
@@ -717,7 +717,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 1500) / 1000.0
-    seat_click_delay = delays.get("seat_click", 10) / 1000.0
+    seat_click_delay = delays.get("seat_click", 30) / 1000.0
     refresh_delay = delays.get("refresh", 300) / 1000.0
     section_move = delays.get("section_move", 100) / 1000.0
     # 매크로 제어값 (설정 가능, 기본값은 config.py DEFAULT_CONFIG 참조)
@@ -1021,7 +1021,7 @@ def _click(x: int, y: int, label: str = "", jitter: int = 5):
     """좌표 클릭 + 랜덤 마우스 이동 (봇 탐지 회피)"""
     jx = x + random.randint(-jitter, jitter)
     jy = y + random.randint(-jitter, jitter)
-    SystemBot.move(jx, jy, duration=random.uniform(0.08, 0.25))
+    SystemBot.move(jx, jy, duration=random.uniform(0.03, 0.10))
     SystemBot.click(jx, jy)
     logger.info("  🖱️ %s (%d,%d) → jitter=%d", label, x, y, jitter)
 

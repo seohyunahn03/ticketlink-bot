@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import ssl
+import subprocess
 import threading
 import time
 import urllib.parse
@@ -567,94 +568,81 @@ def xai_device_login(
 
 
 # ============================================================
-# OpenAI (Codex) OAuth 로그인 (Device Code)
+# OpenAI (Codex) OAuth 로그인 — Codex CLI --device-auth 활용
 # ============================================================
 
-def openai_oauth_login(
-    timeout_seconds: float = 120.0,
-    open_browser: bool = True,
-) -> dict:
+def openai_oauth_login(timeout_seconds=120):
     """
-    OpenAI (Codex) OAuth Device Code 로그인 플로우 실행.
+    OpenAI/Codex OAuth 로그인 — Codex CLI의 --device-auth 활용.
 
-    1. OIDC Discovery (auth0.openai.com)
-    2. Device Code 요청 (user_code + verification_uri)
-    3. 브라우저에서 verification_uri 열기
-    4. 사용자가 user_code 입력 후 인증
-    5. Polling → Access/Refresh Token 획득
-    6. 저장된 토큰 반환 (openai 키)
-
-    Returns:
-        {"access_token": str, "refresh_token": str, "expires_at": int, ...}
+    Codex CLI가 Cloudflare challenge를 처리하므로 직접 HTTP 요청보다 안정적.
     """
-    logger.info("🤖 OpenAI (Codex) OAuth 로그인 시작...")
+    logger.info("🔐 OpenAI (Codex) OAuth 로그인 시작...")
 
-    # 1. Discovery
-    logger.info("   OIDC discovery 중...")
-    discovery = _openai_discover()
-    token_endpoint = discovery["token_endpoint"]
+    # 1) 이미 auth 파일이 있으면 바로 읽기
+    codex_auth_path = Path.home() / ".codex" / "auth.json"
+    if codex_auth_path.exists():
+        logger.info("   ✅ 기존 Codex OAuth 토큰 발견: %s", codex_auth_path)
+        return _import_codex_tokens(codex_auth_path)
 
-    # 2. Device Code 요청
-    logger.info("   Device Code 요청 중...")
-    device_resp = _request_device_code(
-        discovery,
-        client_id=OPENAI_OAUTH_CLIENT_ID,
-        scope=OPENAI_OAUTH_SCOPE,
-    )
-    device_code = device_resp["device_code"]
-    user_code = device_resp["user_code"]
-    verification_uri = device_resp.get(
-        "verification_uri",
-        device_resp.get("verification_uri_complete",
-                        "https://auth0.openai.com/activate"),
-    )
-    interval = device_resp.get("interval", 5)
+    # 2) Codex CLI --device-auth 실행 (브라우저에서 OAuth)
+    logger.info("   🔑 Codex CLI 로그인 실행 중... (브라우저가 열립니다)")
+    logger.info("   (처음이면 npm/npx 패키지 다운로드에 시간이 소요될 수 있음)")
 
-    # 3. 사용자에게 코드 표시 + 브라우저 열기
-    logger.info("")
-    logger.info("=" * 50)
-    logger.info("  🤖 OpenAI (Codex) OAuth 인증")
-    logger.info("=" * 50)
-    logger.info("  브라우저가 열리면 OpenAI 계정으로 로그인한 뒤,")
-    logger.info("  아래 코드를 입력하세요:")
-    logger.info("")
-    logger.info("  ┌──────────────────────────────┐")
-    logger.info("  │                              │")
-    logger.info("  │      인증 코드: %s     │", user_code)
-    logger.info("  │                              │")
-    logger.info("  └──────────────────────────────┘")
-    logger.info("")
-    logger.info("  또는 브라우저에서 직접 접속: %s", verification_uri)
-    logger.info("  (타임아웃: %d초)", timeout_seconds)
-    logger.info("=" * 50)
-    logger.info("")
+    try:
+        result = subprocess.run(
+            ["npx", "@openai/codex", "login", "--device-auth"],
+            capture_output=True, text=True,
+            timeout=timeout_seconds,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Codex CLI 로그인 실패 (exit={result.returncode}):\n"
+                f"{result.stderr.strip()}"
+            )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "npx를 찾을 수 없습니다. Node.js가 설치되어 있는지 확인하세요."
+        )
+    except subprocess.TimeoutExpired:
+        raise TimeoutError(
+            f"Codex OAuth 로그인 시간 초과 ({timeout_seconds}초)"
+        )
 
-    # 4. 브라우저 열기
-    if open_browser:
-        try:
-            webbrowser.open(verification_uri)
-        except Exception:
-            pass
+    # 3) 로그인 후 auth.json 읽기
+    if not codex_auth_path.exists():
+        raise RuntimeError(
+            "Codex CLI 로그인은 완료되었지만 auth.json을 찾을 수 없습니다.\n"
+            f"  예상 경로: {codex_auth_path}"
+        )
 
-    # 5. Polling → Token
-    logger.info("   인증 완료 대기 중... (브라우저에서 코드를 입력하세요)")
-    token_result = _poll_device_token(
-        device_code, token_endpoint,
-        client_id=OPENAI_OAUTH_CLIENT_ID,
-        interval=interval, timeout=timeout_seconds,
-    )
+    return _import_codex_tokens(codex_auth_path)
 
-    # 6. 토큰 정리 및 저장 (openai 키)
-    tokens = _normalize_tokens(token_result)
+
+def _import_codex_tokens(codex_auth_path: Path) -> dict:
+    """Codex auth.json을 읽어 ticketlink-bot 형식으로 변환"""
+    with open(codex_auth_path) as f:
+        codex_tokens = json.load(f)
+
+    # Codex auth.json 구조 확인 (일반적으로 access_token, refresh_token 등)
+    access_token = codex_tokens.get("access_token") or ""
+    refresh_token = codex_tokens.get("refresh_token") or ""
+    expires_in = int(codex_tokens.get("expires_in", 21600))
+    expires_at = codex_tokens.get("expires_at") or int(time.time()) + expires_in
+
+    tokens = {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": expires_at,
+        "expires_in": expires_in,
+        "token_type": "Bearer",
+        "scope": "openid profile email offline_access",
+        "saved_at": int(time.time()),
+    }
+
+    # 우리 auth.json에 저장
     _save_tokens(tokens, provider="openai")
-
-    expires_in = tokens.get("expires_in", 0)
-    logger.info(
-        "✅ OpenAI (Codex) OAuth 로그인 완료! (Access Token: %d자, %d초 유효)",
-        len(tokens.get("access_token", "")),
-        expires_in,
-    )
-
+    logger.info("✅ OpenAI OAuth 토큰 가져오기 완료! (Access Token: %d자)", len(access_token))
     return tokens
 
 

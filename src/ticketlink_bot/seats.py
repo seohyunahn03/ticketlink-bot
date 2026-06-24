@@ -225,7 +225,7 @@ def _calc_adaptive_tolerances(
         return fallback_row, fallback_gap
 
     # 1. 대략적인 y 기준 행 그룹화 (30px)
-    INITIAL_ROW_THRESHOLD = 30
+    INITIAL_ROW_THRESHOLD = 15
     row_groups: dict[int, list[int]] = {}
     for sx, sy in seats:
         matched = False
