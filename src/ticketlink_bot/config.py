@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
         "api_type": "oauth",  # "vision" | "oauth"
         "api_key": "",         # 직접 API 키 (선택사항)
         "model": "grok-4.20-0309-non-reasoning",
+        "openai_model": "gpt-5.4-codex",
     },
     # ===== 매크로 좌표 설정 =====
     "macro": {

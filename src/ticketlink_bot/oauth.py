@@ -1,17 +1,20 @@
 """
-🔐 xAI OAuth PKCE 인증 모듈
+🔐 OAuth 인증 모듈 — xAI + OpenAI (Codex)
 
-Authorization Code Flow + PKCE를 사용한 xAI/Grok OAuth 인증.
-로컬 HTTP 서버에서 콜백을 받아 토큰을 교환하고 저장/자동갱신.
+Device Code Flow (RFC 8628) 기반 OAuth 인증.
+xAI와 OpenAI(Codex) OAuth를 지원하며, 각각의 토큰은
+~/.config/ticketlink-bot/auth.json에 중첩된 형태로 저장됩니다.
 
 사용법:
-    from .oauth import xai_oauth_login, get_xai_token
+    from .oauth import xai_oauth_login, get_xai_token, openai_oauth_login, get_openai_token
 
-    # 첫 실행: 브라우저 OAuth 로그인
+    # xAI
     token = xai_oauth_login()
-
-    # 이후: 저장된 토큰 사용 (만료 시 자동 갱신)
     token = get_xai_token()
+
+    # OpenAI (Codex)
+    token = openai_oauth_login()
+    token = get_openai_token()
 """
 import json
 import logging
@@ -36,6 +39,14 @@ XAI_OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
 XAI_OAUTH_SCOPE = "openid profile email offline_access grok-cli:access api:access"
 XAI_API_BASE_URL = "https://api.x.ai/v1"
 
+# ============================================================
+# OpenAI (Codex) OAuth 설정
+# ============================================================
+OPENAI_OAUTH_ISSUER = "https://auth0.openai.com"
+OPENAI_OAUTH_DISCOVERY_URL = f"{OPENAI_OAUTH_ISSUER}/.well-known/openid-configuration"
+OPENAI_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+OPENAI_OAUTH_SCOPE = "openid profile email offline_access"
+
 # 토큰 저장 경로
 TOKEN_PATH = Path.home() / ".config" / "ticketlink-bot" / "auth.json"
 
@@ -44,10 +55,11 @@ TOKEN_PATH = Path.home() / ".config" / "ticketlink-bot" / "auth.json"
 # OIDC Discovery
 # ============================================================
 
-def _xai_discover(timeout: float = 15.0) -> dict:
-    """xAI OIDC Discovery — 인증/토큰 엔드포인트 조회"""
+def _discover(discovery_url: str, provider_name: str = "OIDC",
+              timeout: float = 15.0) -> dict:
+    """Generic OIDC discovery — 인증/토큰/device 엔드포인트 조회"""
     req = urllib.request.Request(
-        XAI_OAUTH_DISCOVERY_URL,
+        discovery_url,
         headers={"Accept": "application/json"},
     )
     ctx = ssl.create_default_context()
@@ -56,17 +68,16 @@ def _xai_discover(timeout: float = 15.0) -> dict:
 
     auth_endpoint = (data.get("authorization_endpoint") or "").strip()
     token_endpoint = (data.get("token_endpoint") or "").strip()
-
     device_endpoint = (data.get("device_authorization_endpoint") or "").strip()
 
     if not auth_endpoint or not token_endpoint:
         raise RuntimeError(
-            "xAI OIDC discovery 응답에 authorization_endpoint 또는 "
-            "token_endpoint가 없습니다."
+            f"{provider_name} OIDC discovery 응답에 authorization_endpoint 또는 "
+            f"token_endpoint가 없습니다."
         )
     if not device_endpoint:
         raise RuntimeError(
-            "xAI OIDC에 device_authorization_endpoint 없음"
+            f"{provider_name} OIDC에 device_authorization_endpoint 없음"
         )
     return {
         "authorization_endpoint": auth_endpoint,
@@ -75,18 +86,30 @@ def _xai_discover(timeout: float = 15.0) -> dict:
     }
 
 
+def _xai_discover(timeout: float = 15.0) -> dict:
+    """xAI OIDC Discovery"""
+    return _discover(XAI_OAUTH_DISCOVERY_URL, "xAI", timeout)
+
+
+def _openai_discover(timeout: float = 15.0) -> dict:
+    """OpenAI (Codex) OIDC Discovery"""
+    return _discover(OPENAI_OAUTH_DISCOVERY_URL, "OpenAI", timeout)
+
+
 # ============================================================
-# Device Code Flow (RFC 8628) — xAI OAuth
+# Device Code Flow (RFC 8628)
 # ============================================================
 
-def _request_device_code(discovery: dict) -> dict:
-    """xAI Device Code 요청 → user_code + device_code + verification_uri"""
+def _request_device_code(discovery: dict,
+                         client_id: str = XAI_OAUTH_CLIENT_ID,
+                         scope: str = XAI_OAUTH_SCOPE) -> dict:
+    """Device Code 요청 → user_code + device_code + verification_uri"""
     device_endpoint = discovery.get("device_authorization_endpoint")
     if not device_endpoint:
-        raise RuntimeError("xAI OIDC에 device_authorization_endpoint 없음")
+        raise RuntimeError("OIDC에 device_authorization_endpoint 없음")
     data = urllib.parse.urlencode({
-        "client_id": XAI_OAUTH_CLIENT_ID,
-        "scope": XAI_OAUTH_SCOPE,
+        "client_id": client_id,
+        "scope": scope,
     }).encode()
     req = urllib.request.Request(
         device_endpoint, data=data,
@@ -97,7 +120,9 @@ def _request_device_code(discovery: dict) -> dict:
     return json.loads(resp.read())
 
 
-def _poll_device_token(device_code: str, token_endpoint: str, interval: int = 5,
+def _poll_device_token(device_code: str, token_endpoint: str,
+                       client_id: str = XAI_OAUTH_CLIENT_ID,
+                       interval: int = 5,
                        timeout: float = 300.0) -> dict:
     """Device Code → Access Token 폴링"""
     deadline = time.time() + timeout
@@ -105,7 +130,7 @@ def _poll_device_token(device_code: str, token_endpoint: str, interval: int = 5,
         data = urllib.parse.urlencode({
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
             "device_code": device_code,
-            "client_id": XAI_OAUTH_CLIENT_ID,
+            "client_id": client_id,
         }).encode()
         req = urllib.request.Request(
             token_endpoint, data=data,
@@ -150,15 +175,13 @@ def _cleanup_old_token():
 # 토큰 갱신
 # ============================================================
 
-def _refresh_token(
-    refresh_token: str,
-    token_endpoint: str,
-    timeout: float = 20.0,
-) -> dict:
+def _refresh_token(refresh_token: str, token_endpoint: str,
+                   client_id: str = XAI_OAUTH_CLIENT_ID,
+                   timeout: float = 20.0) -> dict:
     """Refresh Token으로 Access Token 갱신"""
     data = urllib.parse.urlencode({
         "grant_type": "refresh_token",
-        "client_id": XAI_OAUTH_CLIENT_ID,
+        "client_id": client_id,
         "refresh_token": refresh_token,
     }).encode()
 
@@ -174,31 +197,104 @@ def _refresh_token(
 
 
 # ============================================================
-# 토큰 저장/로드
+# 토큰 저장/로드 — 다중 프로바이더 지원
 # ============================================================
 
-def _save_tokens(tokens: dict) -> Path:
-    """토큰을 auth.json에 저장"""
+def _migrate_if_needed(data: dict) -> dict:
+    """
+    이전 단일 제공자 형식(flat)을 신규 중첩 형식으로 마이그레이션.
+
+    이전 형식:
+        {"access_token": "...", "refresh_token": "...", ...}
+    신규 형식:
+        {"xai": {...}, "openai": {...}}
+
+    감지: 최상위에 "access_token" 키가 있고 "xai"/"openai" 키가 없으면
+          이전 형식으로 간주하고 "xai" 하위로 이동.
+    """
+    if "access_token" in data and "xai" not in data and "openai" not in data:
+        migrated = {"xai": data}
+        try:
+            with open(TOKEN_PATH, "w") as f:
+                json.dump(migrated, f, indent=2)
+            logger.info("   🔄 auth.json 마이그레이션 완료 (flat → nested)")
+        except Exception:
+            pass
+        return migrated
+    return data
+
+
+def _save_tokens(tokens: dict, provider: str = "xai") -> Path:
+    """특정 프로바이더의 토큰을 auth.json에 저장"""
     TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    # 기존 데이터 로드
+    all_tokens = {}
+    if TOKEN_PATH.exists():
+        try:
+            with open(TOKEN_PATH) as f:
+                all_tokens = json.load(f)
+            all_tokens = _migrate_if_needed(all_tokens)
+        except (json.JSONDecodeError, OSError):
+            all_tokens = {}
+
+    all_tokens[provider] = tokens
+
     with open(TOKEN_PATH, "w") as f:
-        json.dump(tokens, f, indent=2)
-    logger.info("🔐 토큰 저장 완료: %s", TOKEN_PATH)
+        json.dump(all_tokens, f, indent=2)
+    logger.info("🔐 %s 토큰 저장 완료: %s", provider.upper(), TOKEN_PATH)
     return TOKEN_PATH
 
 
-def _load_tokens() -> Optional[dict]:
-    """auth.json에서 토큰 로드"""
+def _load_tokens(provider: Optional[str] = None) -> Optional[dict]:
+    """
+    auth.json에서 토큰 로드.
+
+    Args:
+        provider: None이면 모든 프로바이더의 중첩 dict 반환.
+                  "xai" 또는 "openai"면 해당 프로바이더의 flat dict 반환.
+
+    Returns:
+        프로바이더 지정 시: {"access_token": str, ...} or None
+        프로바이더 미지정 시: {"xai": {...}, "openai": {...}} or None
+    """
     if not TOKEN_PATH.exists():
         return None
     try:
         with open(TOKEN_PATH) as f:
-            return json.load(f)
+            data = json.load(f)
     except (json.JSONDecodeError, OSError):
         return None
 
+    # 이전 형식(flat) → 신규 형식(nested) 마이그레이션
+    data = _migrate_if_needed(data)
+
+    if provider is not None:
+        return data.get(provider)
+    return data
+
 
 # ============================================================
-# xAI OAuth 로그인 (PKCE + 로컬 콜백)
+# 토큰 정규화
+# ============================================================
+
+def _normalize_tokens(raw: dict) -> dict:
+    """원시 토큰 응답을 표준 형식으로 변환"""
+    now = int(time.time())
+    expires_in = int(raw.get("expires_in", 21600))  # 기본 6시간
+    return {
+        "access_token": raw.get("access_token", ""),
+        "refresh_token": raw.get("refresh_token", ""),
+        "expires_at": now + expires_in,
+        "expires_in": expires_in,
+        "token_type": raw.get("token_type", "Bearer"),
+        "scope": raw.get("scope", ""),
+        "saved_at": now,
+    }
+
+
+# ============================================================
+# xAI OAuth 로그인 (Device Code)
 # ============================================================
 
 def xai_oauth_login(
@@ -230,7 +326,8 @@ def xai_oauth_login(
 
     # 3. Device Code 요청
     logger.info("   Device Code 요청 중...")
-    device_resp = _request_device_code(discovery)
+    device_resp = _request_device_code(discovery, client_id=XAI_OAUTH_CLIENT_ID,
+                                       scope=XAI_OAUTH_SCOPE)
     device_code = device_resp["device_code"]
     user_code = device_resp["user_code"]
     verification_uri = device_resp.get("verification_uri",
@@ -268,12 +365,13 @@ def xai_oauth_login(
     logger.info("   인증 완료 대기 중... (브라우저에서 코드를 입력하세요)")
     token_result = _poll_device_token(
         device_code, token_endpoint,
+        client_id=XAI_OAUTH_CLIENT_ID,
         interval=interval, timeout=timeout_seconds,
     )
 
-    # 9. 토큰 정리 및 저장
+    # 7. 토큰 정리 및 저장
     tokens = _normalize_tokens(token_result)
-    _save_tokens(tokens)
+    _save_tokens(tokens, provider="xai")
 
     expires_in = tokens.get("expires_in", 0)
     logger.info(
@@ -286,26 +384,7 @@ def xai_oauth_login(
 
 
 # ============================================================
-# 토큰 정규화
-# ============================================================
-
-def _normalize_tokens(raw: dict) -> dict:
-    """원시 토큰 응답을 표준 형식으로 변환"""
-    now = int(time.time())
-    expires_in = int(raw.get("expires_in", 21600))  # 기본 6시간
-    return {
-        "access_token": raw.get("access_token", ""),
-        "refresh_token": raw.get("refresh_token", ""),
-        "expires_at": now + expires_in,
-        "expires_in": expires_in,
-        "token_type": raw.get("token_type", "Bearer"),
-        "scope": raw.get("scope", ""),
-        "saved_at": now,
-    }
-
-
-# ============================================================
-# 토큰 획득 (저장된 토큰 → 만료 시 자동 갱신)
+# xAI 토큰 획득 (저장된 토큰 → 만료 시 자동 갱신)
 # ============================================================
 
 def get_xai_token() -> str:
@@ -320,7 +399,7 @@ def get_xai_token() -> str:
     Returns:
         Bearer token string (access_token)
     """
-    tokens = _load_tokens()
+    tokens = _load_tokens(provider="xai")
 
     # 토큰 없음
     if not tokens or not tokens.get("access_token"):
@@ -352,7 +431,7 @@ def get_xai_token() -> str:
     try:
         discovery = _xai_discover()
         token_endpoint = discovery["token_endpoint"]
-        result = _refresh_token(refresh_token, token_endpoint)
+        result = _refresh_token(refresh_token, token_endpoint, client_id=XAI_OAUTH_CLIENT_ID)
         new_tokens = _normalize_tokens(result)
 
         # Refresh Token이 새로 발급되었으면 업데이트
@@ -362,7 +441,7 @@ def get_xai_token() -> str:
             # 기존 refresh_token 유지
             new_tokens["refresh_token"] = refresh_token
 
-        _save_tokens(new_tokens)
+        _save_tokens(new_tokens, provider="xai")
         logger.info("✅ Access Token 갱신 완료!")
         return new_tokens["access_token"]
 
@@ -375,7 +454,7 @@ def get_xai_token() -> str:
 
 
 # ============================================================
-# Device Authorization Flow (폰/원격 인증)
+# Device Authorization Flow (폰/원격 인증) — xAI
 # ============================================================
 
 def xai_device_login(
@@ -460,7 +539,7 @@ def xai_device_login(
             tokens = _normalize_tokens(token_data)
             if token_data.get("refresh_token"):
                 tokens["refresh_token"] = token_data["refresh_token"]
-            _save_tokens(tokens)
+            _save_tokens(tokens, provider="xai")
             print("\n✅ xAI OAuth 인증 완료! 토큰이 저장되었습니다.\n")
             return tokens
 
@@ -485,6 +564,166 @@ def xai_device_login(
     raise RuntimeError(
         "⏰ 인증 시간이 초과되었습니다. 다시 --setup을 실행하세요."
     )
+
+
+# ============================================================
+# OpenAI (Codex) OAuth 로그인 (Device Code)
+# ============================================================
+
+def openai_oauth_login(
+    timeout_seconds: float = 120.0,
+    open_browser: bool = True,
+) -> dict:
+    """
+    OpenAI (Codex) OAuth Device Code 로그인 플로우 실행.
+
+    1. OIDC Discovery (auth0.openai.com)
+    2. Device Code 요청 (user_code + verification_uri)
+    3. 브라우저에서 verification_uri 열기
+    4. 사용자가 user_code 입력 후 인증
+    5. Polling → Access/Refresh Token 획득
+    6. 저장된 토큰 반환 (openai 키)
+
+    Returns:
+        {"access_token": str, "refresh_token": str, "expires_at": int, ...}
+    """
+    logger.info("🤖 OpenAI (Codex) OAuth 로그인 시작...")
+
+    # 1. Discovery
+    logger.info("   OIDC discovery 중...")
+    discovery = _openai_discover()
+    token_endpoint = discovery["token_endpoint"]
+
+    # 2. Device Code 요청
+    logger.info("   Device Code 요청 중...")
+    device_resp = _request_device_code(
+        discovery,
+        client_id=OPENAI_OAUTH_CLIENT_ID,
+        scope=OPENAI_OAUTH_SCOPE,
+    )
+    device_code = device_resp["device_code"]
+    user_code = device_resp["user_code"]
+    verification_uri = device_resp.get(
+        "verification_uri",
+        device_resp.get("verification_uri_complete",
+                        "https://auth0.openai.com/activate"),
+    )
+    interval = device_resp.get("interval", 5)
+
+    # 3. 사용자에게 코드 표시 + 브라우저 열기
+    logger.info("")
+    logger.info("=" * 50)
+    logger.info("  🤖 OpenAI (Codex) OAuth 인증")
+    logger.info("=" * 50)
+    logger.info("  브라우저가 열리면 OpenAI 계정으로 로그인한 뒤,")
+    logger.info("  아래 코드를 입력하세요:")
+    logger.info("")
+    logger.info("  ┌──────────────────────────────┐")
+    logger.info("  │                              │")
+    logger.info("  │      인증 코드: %s     │", user_code)
+    logger.info("  │                              │")
+    logger.info("  └──────────────────────────────┘")
+    logger.info("")
+    logger.info("  또는 브라우저에서 직접 접속: %s", verification_uri)
+    logger.info("  (타임아웃: %d초)", timeout_seconds)
+    logger.info("=" * 50)
+    logger.info("")
+
+    # 4. 브라우저 열기
+    if open_browser:
+        try:
+            webbrowser.open(verification_uri)
+        except Exception:
+            pass
+
+    # 5. Polling → Token
+    logger.info("   인증 완료 대기 중... (브라우저에서 코드를 입력하세요)")
+    token_result = _poll_device_token(
+        device_code, token_endpoint,
+        client_id=OPENAI_OAUTH_CLIENT_ID,
+        interval=interval, timeout=timeout_seconds,
+    )
+
+    # 6. 토큰 정리 및 저장 (openai 키)
+    tokens = _normalize_tokens(token_result)
+    _save_tokens(tokens, provider="openai")
+
+    expires_in = tokens.get("expires_in", 0)
+    logger.info(
+        "✅ OpenAI (Codex) OAuth 로그인 완료! (Access Token: %d자, %d초 유효)",
+        len(tokens.get("access_token", "")),
+        expires_in,
+    )
+
+    return tokens
+
+
+# ============================================================
+# OpenAI (Codex) 토큰 획득 (저장된 토큰 → 만료 시 자동 갱신)
+# ============================================================
+
+def get_openai_token() -> str:
+    """
+    사용 가능한 OpenAI (Codex) Access Token 반환.
+
+    1. auth.json에서 openai 키의 저장된 토큰 로드
+    2. 만료되지 않았으면 그대로 반환
+    3. 만료되었으면 Refresh Token으로 갱신 후 저장
+    4. 토큰도 리프레시 토큰도 없으면 에러
+
+    Returns:
+        Bearer token string (access_token)
+    """
+    tokens = _load_tokens(provider="openai")
+
+    # 토큰 없음
+    if not tokens or not tokens.get("access_token"):
+        raise RuntimeError(
+            "OpenAI (Codex) OAuth 토큰이 없습니다.\n"
+            "  GUI → 설정 → 🤖 Codex OAuth 로그인을 먼저 실행하세요."
+        )
+
+    # 만료 확인 (5분 버퍼)
+    now = int(time.time())
+    expires_at = tokens.get("expires_at", 0)
+    buffer = 300  # 5분
+
+    if now < expires_at - buffer:
+        # 유효함
+        return tokens["access_token"]
+
+    # 만료 → Refresh 시도
+    refresh_token = tokens.get("refresh_token", "")
+    if not refresh_token:
+        raise RuntimeError(
+            "OpenAI Access Token이 만료되었고 Refresh Token이 없습니다.\n"
+            "  GUI → 설정 → 🤖 Codex OAuth 로그인을 다시 실행하세요."
+        )
+
+    logger.info("🔄 OpenAI Access Token 만료, Refresh Token으로 갱신 중...")
+    try:
+        discovery = _openai_discover()
+        token_endpoint = discovery["token_endpoint"]
+        result = _refresh_token(refresh_token, token_endpoint,
+                                client_id=OPENAI_OAUTH_CLIENT_ID)
+        new_tokens = _normalize_tokens(result)
+
+        # Refresh Token이 새로 발급되었으면 업데이트
+        if result.get("refresh_token"):
+            new_tokens["refresh_token"] = result["refresh_token"]
+        else:
+            # 기존 refresh_token 유지
+            new_tokens["refresh_token"] = refresh_token
+
+        _save_tokens(new_tokens, provider="openai")
+        logger.info("✅ OpenAI Access Token 갱신 완료!")
+        return new_tokens["access_token"]
+
+    except Exception as e:
+        raise RuntimeError(
+            f"❌ OpenAI Token 갱신 실패: {e}\n"
+            "  GUI → 설정 → 🤖 Codex OAuth 로그인을 다시 실행하세요."
+        )
 
 
 # ============================================================
@@ -538,7 +777,7 @@ def migrate_from_hermes() -> bool:
                             "migrated_from": str(hp),
                             "base_url": entry.get("base_url", XAI_API_BASE_URL),
                         }
-                        _save_tokens(tokens)
+                        _save_tokens(tokens, provider="xai")
                         logger.info(
                             "✅ Hermes %s에서 OAuth 토큰 마이그레이션 완료",
                             hp.parent.name if hp.parent.name != ".hermes" else "global",

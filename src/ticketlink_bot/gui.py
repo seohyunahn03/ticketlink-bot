@@ -589,9 +589,13 @@ class TicketlinkGUI(tk.Tk):
         self._xai_oauth_btn = ttk.Button(frame, text="🔐 xAI OAuth 로그인",
                                          command=self._start_xai_oauth)
         self._xai_oauth_btn.grid(row=row, column=2, sticky="w", padx=4, pady=2)
+        # Codex OAuth 로그인 버튼 (xAI 옆에)
+        self._codex_oauth_btn = ttk.Button(frame, text="🤖 Codex OAuth 로그인",
+                                           command=self._start_codex_oauth)
+        self._codex_oauth_btn.grid(row=row, column=3, sticky="w", padx=4, pady=2)
         ttk.Label(frame, text="oauth=PKCE 인증 (추천) / vision=API 키 직접",
                   font=("", 8), foreground="gray").grid(
-            row=row, column=3, sticky="w", padx=4, pady=2)
+            row=row, column=4, sticky="w", padx=4, pady=2)
         row += 1
 
         # xai_api_key (선택, 감춰진 입력)
@@ -735,6 +739,29 @@ class TicketlinkGUI(tk.Tk):
                 logger.error("❌ xAI OAuth 로그인 실패 — 토큰을 받지 못했습니다.")
         except Exception as e:
             logger.error("❌ xAI OAuth 로그인 오류: %s", e)
+            import traceback
+            traceback.print_exc()
+
+    # ── Codex OAuth 로그인 ──
+
+    def _start_codex_oauth(self):
+        """Codex OAuth Device Code 로그인 (별도 스레드)"""
+        threading.Thread(target=self._do_codex_oauth, daemon=True).start()
+
+    def _do_codex_oauth(self):
+        """백그라운드에서 OpenAI (Codex) OAuth 로그인 실행"""
+        try:
+            from .oauth import openai_oauth_login
+            logger.info("🤖 Codex OAuth 로그인 시작... (브라우저가 열립니다)")
+            tokens = openai_oauth_login(timeout_seconds=120.0, open_browser=True)
+            if tokens and tokens.get("access_token"):
+                logger.info("✅ Codex OAuth 로그인 완료! (%d자 토큰)",
+                            len(tokens["access_token"]))
+                self.after(0, self._save_preset, self._current_preset)
+            else:
+                logger.error("❌ Codex OAuth 로그인 실패 — 토큰을 받지 못했습니다.")
+        except Exception as e:
+            logger.error("❌ Codex OAuth 로그인 오류: %s", e)
             import traceback
             traceback.print_exc()
 
