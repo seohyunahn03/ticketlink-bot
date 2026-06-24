@@ -478,7 +478,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 1500) / 1000.0
-    seat_click_delay = delays.get("seat_click", 30) / 1000.0
+    seat_click_delay = delays.get("seat_click", 10) / 1000.0
     refresh_delay = delays.get("refresh", 300) / 1000.0
     section_move = delays.get("section_move", 100) / 1000.0
 
@@ -725,7 +725,7 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
     macro = cfg.get("macro", {})
     delays = macro.get("delays", {})
     click_wait = delays.get("click_wait", 1500) / 1000.0
-    seat_click_delay = delays.get("seat_click", 30) / 1000.0
+    seat_click_delay = delays.get("seat_click", 10) / 1000.0
     refresh_delay = delays.get("refresh", 300) / 1000.0
     section_move = delays.get("section_move", 100) / 1000.0
     # 매크로 제어값 (설정 가능, 기본값은 config.py DEFAULT_CONFIG 참조)
