@@ -460,65 +460,6 @@ def refresh_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict
 
 
 # ================================================================
-#  좌석 검증 — 클릭 직전 색상 재확인 (선점 방지)
-# ================================================================
-
-def _verify_seats_still_empty(
-    seats: list[tuple[int, int]],
-    seat_zones: list[dict],
-) -> list[tuple[int, int]]:
-    """클릭 직전 좌석 색상 재확인 — 이미 차 있으면 제외"""
-    import io
-    from PIL import Image
-    import numpy as np
-    from .system_bot import SystemBot
-
-    png = SystemBot.screenshot()
-    if not png:
-        return seats  # 스크린샷 실패 시 일단 진행
-
-    try:
-        img = Image.open(io.BytesIO(png))
-        pixels = np.array(img.convert("RGB"))
-    except Exception:
-        return seats
-    h, w = pixels.shape[:2]
-
-    verified = []
-    for sx, sy in seats:
-        if sx < 0 or sx >= w or sy < 0 or sy >= h:
-            continue
-        r, g, b = int(pixels[sy, sx][0]), int(pixels[sy, sx][1]), int(pixels[sy, sx][2])
-
-        # 모든 zone 색상과 비교 (하나라도 매칭되면 빈 좌석)
-        is_empty = False
-        for zone in seat_zones:
-            color = zone.get("color", "C8C8C8")
-            tolerance = zone.get("tolerance", 20)
-            target_rgb = (
-                int(color[4:6], 16),  # R
-                int(color[2:4], 16),  # G
-                int(color[0:2], 16),  # B
-            )
-            if (abs(r - target_rgb[0]) <= tolerance and
-                abs(g - target_rgb[1]) <= tolerance and
-                abs(b - target_rgb[2]) <= tolerance):
-                is_empty = True
-                break
-
-        if is_empty:
-            verified.append((sx, sy))
-        else:
-            logger.warning("  ⚠️ 좌석(%d,%d) 색상 변경됨 (R=%d G=%d B=%d) — 선점됨",
-                          sx, sy, r, g, b)
-
-    if len(verified) < len(seats):
-        logger.info("  🔍 검증: %d/%d석 유효 (%d석 선점)",
-                    len(verified), len(seats), len(seats) - len(verified))
-    return verified
-
-
-# ================================================================
 #  매크로 봇 (F7)
 # ================================================================
 
@@ -641,15 +582,6 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         if found_group:
             logger.info("  🎯 빈 좌석 발견! %d석 (%d/%d)",
                         len(found_group), attempt + 1, max_retries)
-            # 검증: 클릭 직전에 색상 재확인 (선점 방지)
-            verified = _verify_seats_still_empty(found_group, seat_zones)
-            if len(verified) < consecutive_n:
-                logger.warning("  ⚠️ 검증 후 %d석만 유효 (<%d연석) — 재검색",
-                              len(verified), consecutive_n)
-                found_group = None
-                _wait(0.5)
-                continue
-            found_group = verified
             break
 
         logger.info("  ↻ 빈 좌석 없음, 새로고침 (%d/%d)", attempt + 1, max_retries)
