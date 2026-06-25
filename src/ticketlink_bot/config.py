@@ -25,6 +25,16 @@ DEFAULT_CONFIG = {
         "auto_captcha": True,
         "server_time": "",  # "10:00:00" 형식 — 새로고침 봇용
         "default_url": "https://www.ticketlink.co.kr/sports/137/59",
+        # ── 하이브리드 새로고침 (CDP 기반 DOM 폴링) ──
+        "hybrid_refresh": {
+            "enabled": False,
+            "source_product_id": "",       # BEFORE 구단 productId (예: "61881")
+            "source_schedule_id": "",       # BEFORE 경기 scheduleId (예: "1492740043")
+            "target_product_id": "",        # 타겟 productId (비우면 동일 경기)
+            "target_schedule_id": "",       # 타겟 scheduleId (비우면 동일 경기)
+            "poll_interval": 0.5,           # DOM 폴링 간격 (초)
+            "max_wait_minutes": 60,         # 최대 대기 시간 (분)
+        },
     },
     # xAI (캡차)
     "xai": {

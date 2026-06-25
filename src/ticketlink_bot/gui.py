@@ -120,11 +120,13 @@ class TicketlinkGUI(tk.Tk):
         self._running = False
         self._bot_ref = None  # Bot 인스턴스 참조
 
-        # 이중봇 상태 (F6=새로고침, F7=매크로)
+        # 이중봇 상태 (F6=새로고침, F8=매크로)
         self._refresh_running = False
         self._macro_running = False
+        self._hybrid_running = False  # F9=하이브리드 새로고침
         self._refresh_stop_event = threading.Event()
         self._macro_stop_event = threading.Event()
+        self._hybrid_stop_event = threading.Event()
 
         # 스타일
         _AppStyle.apply_theme(self)
@@ -151,7 +153,7 @@ class TicketlinkGUI(tk.Tk):
         self._server_offset = 0.0
 
         # 상태바 초기화
-        self._statusbar.configure(text=' [F6] 새로고침봇  |  [F8] 매크로봇  |  [ESC] 종료')
+        self._statusbar.configure(text=' [F6] 새로고침봇  |  [F8] 매크로봇  |  [F9] 하이브리드  |  [ESC] 종료')
 
     # ── 메뉴 ──
 
@@ -301,19 +303,26 @@ class TicketlinkGUI(tk.Tk):
         )
         self._refresh_btn.grid(row=0, column=0, padx=(0, 4))
 
-        # 매크로 봇 (F7)
+        # 매크로 봇 (F8)
         self._macro_btn = ttk.Button(
             btn_row, text="⚡ 매크로 (F8)", style="Accent.TButton",
             command=self._toggle_macro,
         )
         self._macro_btn.grid(row=0, column=1, padx=(0, 4))
 
+        # 하이브리드 새로고침 (F9)
+        self._hybrid_btn = ttk.Button(
+            btn_row, text="🔄 하이브리드 (F9)", style="Accent.TButton",
+            command=self._toggle_hybrid,
+        )
+        self._hybrid_btn.grid(row=0, column=2, padx=(0, 4))
+
         # 전체 중지
         self._stop_all_btn = ttk.Button(
             btn_row, text="⏹ 전체 중지", style="Danger.TButton",
             command=self._stop_all,
         )
-        self._stop_all_btn.grid(row=0, column=2, padx=(0, 8))
+        self._stop_all_btn.grid(row=0, column=3, padx=(0, 8))
 
         # 상태 레이블
         self._status_label = ttk.Label(btn_row, text="⏸ 대기중", font=_AppStyle.FONT)
@@ -736,6 +745,68 @@ class TicketlinkGUI(tk.Tk):
         row += 1
         ttk.Label(frame,
                   text="[경기 불러오기] = 구단목록 / [URL에서 읽기] = 현재 예매페이지 URL 파싱",
+                  font=("", 8), foreground="gray").grid(
+            row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
+        row += 1
+
+        # ── 하이브리드 새로고침 (CDP DOM 폴링) ──
+        sep3 = ttk.Separator(frame, orient="horizontal")
+        sep3.grid(row=row, column=0, columnspan=3, sticky="ew", padx=8, pady=4)
+        row += 1
+        ttk.Label(frame, text="🔄 하이브리드 새로고침 (CDP DOM 폴링)", font=("", 10, "bold")).grid(
+            row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
+        row += 1
+
+        hr = self._cfg.get("booking", {}).get("hybrid_refresh", {})
+        self._hybrid_enabled_var = tk.BooleanVar(value=hr.get("enabled", False))
+        ttk.Checkbutton(frame, text="하이브리드 새로고침 활성화", variable=self._hybrid_enabled_var).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=8, pady=2)
+        row += 1
+
+        ttk.Label(frame, text="Source Product ID (BEFORE 구단):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._hybrid_source_pid_var = tk.StringVar(value=hr.get("source_product_id", ""))
+        ttk.Entry(frame, textvariable=self._hybrid_source_pid_var, width=20).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        ttk.Label(frame, text="Source Schedule ID (BEFORE 경기):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._hybrid_source_sid_var = tk.StringVar(value=hr.get("source_schedule_id", ""))
+        ttk.Entry(frame, textvariable=self._hybrid_source_sid_var, width=30).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        ttk.Label(frame, text="Target Product ID (타겟, 선택):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._hybrid_target_pid_var = tk.StringVar(value=hr.get("target_product_id", ""))
+        ttk.Entry(frame, textvariable=self._hybrid_target_pid_var, width=20).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        ttk.Label(frame, text="Target Schedule ID (타겟, 선택):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._hybrid_target_sid_var = tk.StringVar(value=hr.get("target_schedule_id", ""))
+        ttk.Entry(frame, textvariable=self._hybrid_target_sid_var, width=30).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        ttk.Label(frame, text="폴링 간격(초):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._hybrid_poll_var = tk.StringVar(value=str(hr.get("poll_interval", 0.5)))
+        ttk.Entry(frame, textvariable=self._hybrid_poll_var, width=8).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        ttk.Label(frame, text="최대 대기(분):").grid(
+            row=row, column=0, sticky="w", padx=8, pady=4)
+        self._hybrid_max_wait_var = tk.StringVar(value=str(hr.get("max_wait_minutes", 60)))
+        ttk.Entry(frame, textvariable=self._hybrid_max_wait_var, width=8).grid(
+            row=row, column=1, sticky="w", padx=4, pady=2)
+        row += 1
+
+        ttk.Label(frame,
+                  text="Source=BEFORE 게임에서 예매하기 활성 감시 / Target=빈 값이면 동일 경기",
                   font=("", 8), foreground="gray").grid(
             row=row, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 4))
         row += 1
@@ -1185,6 +1256,17 @@ class TicketlinkGUI(tk.Tk):
             self._cdp_product_id_var.set(hijack.get("product_id", ""))
             self._cdp_schedule_id_var.set(hijack.get("schedule_id", ""))
 
+        # Hybrid refresh
+        hr = booking.get("hybrid_refresh", {})
+        if hasattr(self, "_hybrid_enabled_var"):
+            self._hybrid_enabled_var.set(hr.get("enabled", False))
+            self._hybrid_source_pid_var.set(hr.get("source_product_id", ""))
+            self._hybrid_source_sid_var.set(hr.get("source_schedule_id", ""))
+            self._hybrid_target_pid_var.set(hr.get("target_product_id", ""))
+            self._hybrid_target_sid_var.set(hr.get("target_schedule_id", ""))
+            self._hybrid_poll_var.set(str(hr.get("poll_interval", 0.5)))
+            self._hybrid_max_wait_var.set(str(hr.get("max_wait_minutes", 60)))
+
     def _collect_ui_to_cfg(self):
         """UI → 설정"""
         macro = self._cfg.setdefault("macro", {})
@@ -1289,6 +1371,18 @@ class TicketlinkGUI(tk.Tk):
                 "port": int(self._cdp_port_var.get() or "9222"),
                 "product_id": self._cdp_product_id_var.get().strip(),
                 "schedule_id": self._cdp_schedule_id_var.get().strip(),
+            }
+
+        # Hybrid refresh — UI → cfg
+        if hasattr(self, "_hybrid_enabled_var"):
+            booking["hybrid_refresh"] = {
+                "enabled": self._hybrid_enabled_var.get(),
+                "source_product_id": self._hybrid_source_pid_var.get().strip(),
+                "source_schedule_id": self._hybrid_source_sid_var.get().strip(),
+                "target_product_id": self._hybrid_target_pid_var.get().strip(),
+                "target_schedule_id": self._hybrid_target_sid_var.get().strip(),
+                "poll_interval": float(self._hybrid_poll_var.get() or "0.5"),
+                "max_wait_minutes": float(self._hybrid_max_wait_var.get() or "60"),
             }
 
     # ── CDP 경기 불러오기 ──
@@ -1536,10 +1630,11 @@ class TicketlinkGUI(tk.Tk):
     # ── 이중봇 실행 ──
 
     def _update_bot_status(self):
-        """두 봇의 상태를 종합하여 UI 업데이트"""
+        """세 봇의 상태를 종합하여 UI 업데이트"""
         running_parts = []
         refresh_indicator = ""
         macro_indicator = ""
+        hybrid_indicator = ""
 
         if self._refresh_running:
             running_parts.append("🔄새로고침")
@@ -1547,6 +1642,9 @@ class TicketlinkGUI(tk.Tk):
         if self._macro_running:
             running_parts.append("⚡매크로")
             macro_indicator = "[F8] ⚡"
+        if self._hybrid_running:
+            running_parts.append("🔄하이브리드")
+            hybrid_indicator = "[F9] 🔄"
 
         if running_parts:
             self._status_label.configure(
@@ -1554,7 +1652,7 @@ class TicketlinkGUI(tk.Tk):
         else:
             self._status_label.configure(text="⏸ 대기중", foreground=_AppStyle.FG)
 
-        combined = "  ".join(p for p in (refresh_indicator, macro_indicator) if p)
+        combined = "  ".join(p for p in (refresh_indicator, macro_indicator, hybrid_indicator) if p)
         self._refresh_status_label.configure(text=combined)
 
     def _toggle_refresh(self):
@@ -1607,6 +1705,7 @@ class TicketlinkGUI(tk.Tk):
         """전체 중지"""
         self._stop_refresh()
         self._stop_macro_bot()
+        self._stop_hybrid()
 
     def _run_refresh_bot(self):
         """별도 스레드: 새로고침 봇"""
@@ -1640,6 +1739,47 @@ class TicketlinkGUI(tk.Tk):
         finally:
             self.after(0, self._stop_macro_bot)
 
+    # ── 하이브리드 새로고침 ──
+
+    def _toggle_hybrid(self):
+        """F9: 하이브리드 새로고침 봇 시작/중지"""
+        if self._hybrid_running:
+            self._stop_hybrid()
+        else:
+            self._start_hybrid()
+
+    def _start_hybrid(self):
+        """하이브리드 새로고침 봇 시작"""
+        self._collect_ui_to_cfg()
+        self._hybrid_running = True
+        self._hybrid_stop_event.clear()
+        self._hybrid_btn.configure(state="disabled", text="🔄 하이브리드중...")
+        self._update_bot_status()
+        threading.Thread(target=self._run_hybrid_bot, daemon=True).start()
+
+    def _stop_hybrid(self):
+        """하이브리드 새로고침 봇 중지"""
+        self._hybrid_running = False
+        self._hybrid_stop_event.set()
+        self._hybrid_btn.configure(state="normal", text="🔄 하이브리드 (F9)")
+        self._update_bot_status()
+
+    def _run_hybrid_bot(self):
+        """별도 스레드: 하이브리드 새로고침 + 예매 봇"""
+        try:
+            from .standalone import hybrid_book
+            result = hybrid_book(self._cfg, stop_event=self._hybrid_stop_event)
+            if result.get("success"):
+                logger.info("✅ 하이브리드 예매 완료: %s", result.get("message", ""))
+            else:
+                logger.warning("⚠️ 하이브리드 예매 실패: %s", result.get("message", ""))
+        except Exception as e:
+            logger.error("❌ 하이브리드 새로고침 오류: %s", e)
+            import traceback
+            traceback.print_exc()
+        finally:
+            self.after(0, self._stop_hybrid)
+
     # ── 도구 메뉴 ──
 
     def _run_global_picker(self):
@@ -1668,12 +1808,14 @@ class TicketlinkGUI(tk.Tk):
             "1. 좌표 설정: 각 버튼의 위치를 '따기' 버튼으로 설정\n"
             "2. 좌석 영역: 빈 좌석의 색상과 검색 영역 설정\n"
             "3. 새로고침봇(F6) → 예매하기 + 확인까지 자동\n"
-            "4. 매크로봇(F8) → 캡차 + 좌석검색 + 결제까지 자동\n\n"
+            "4. 매크로봇(F8) → 캡차 + 좌석검색 + 결제까지 자동\n"
+            "5. 하이브리드봇(F9) → CDP 폴링 + 예매하기 자동클릭\n\n"
             "🎯 좌표 따기:\n"
             "  - '글로벌' 버튼 → 화면 어디서나 우클릭\n\n"
             "⌨️ 단축키:\n"
             "  F6: 새로고침 봇 시작/중지\n"
             "  F8: 매크로 봇 시작/중지\n"
+            "  F9: 하이브리드 새로고침\n"
             "  ESC: 종료"
         )
 
@@ -1698,6 +1840,8 @@ class TicketlinkGUI(tk.Tk):
                         self.after(0, self._toggle_refresh)
                     elif key == _kb.Key.f8:
                         self.after(0, self._toggle_macro)
+                    elif key == _kb.Key.f9:
+                        self.after(0, self._toggle_hybrid)
                     elif key == _kb.Key.esc:
                         self.after(0, self._on_close)
                 except Exception:
@@ -1705,7 +1849,7 @@ class TicketlinkGUI(tk.Tk):
             self._hotkey_listener = _kb.Listener(on_press=_on_press)
             self._hotkey_listener.daemon = True
             self._hotkey_listener.start()
-            logger.info("⌨️ 글로벌 핫키: F6=새로고침봇, F8=매크로봇, ESC=종료")
+            logger.info("⌨️ 글로벌 핫키: F6=새로고침봇, F8=매크로봇, F9=하이브리드, ESC=종료")
         except ImportError:
             logger.info("  pynput 미설치 — 글로벌 핫키 미지원")
         except Exception as e:

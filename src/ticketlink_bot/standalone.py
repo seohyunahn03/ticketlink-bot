@@ -1050,3 +1050,39 @@ def _wait(t: float):
     varied = max(0.01, varied)  # 최소 10ms
     logger.debug("  ⏳ %.1f초 대기... (varied: %.2f)", t, varied)
     time.sleep(varied)
+
+
+# ================================================================
+#  하이브리드 새로고침 봇 (alias from refresh_hybrid)
+# ================================================================
+
+def hybrid_refresh_bot(cfg: dict, stop_event=None) -> dict:
+    """
+    하이브리드 새로고침 봇 — CDP 기반 DOM 폴링 + 예매하기 자동클릭.
+
+    refresh_hybrid 모듈의 동기 래퍼. GUI/CLI에서 바로 호출 가능.
+
+    Args:
+        cfg: 설정 딕셔너리
+        stop_event: 중지 신호 이벤트
+
+    Returns:
+        {"success": bool, "stage": str, "message": str, ...}
+    """
+    from .refresh_hybrid import hybrid_refresh_bot as _hrb
+    return _hrb(cfg, stop_event=stop_event)
+
+
+def hybrid_book(cfg: dict, stop_event=None) -> dict:
+    """
+    하이브리드 새로고침 + 매크로 체인.
+
+    Args:
+        cfg: 설정 딕셔너리
+        stop_event: 중지 신호 이벤트
+
+    Returns:
+        {"success": bool, "stage": str, "message": str}
+    """
+    from .refresh_hybrid import hybrid_book as _hb
+    return _hb(cfg, stop_event=stop_event)
