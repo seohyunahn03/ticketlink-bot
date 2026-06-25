@@ -603,15 +603,16 @@ def openai_oauth_login(timeout_seconds=120):
     logger.info("   (처음이면 npm/npx 패키지 다운로드에 시간이 소요될 수 있음)")
 
     try:
+        logger.info("   📦 npx 패키지 설치/실행 중... (첫 실행 시 30~90초 소요)")
+        logger.info("   → 브라우저가 자동으로 열리면 로그인하세요.")
+        # capture_output=False 로 터미널 출력/입력 정상 동작 보장
         result = subprocess.run(
-            [npx_path, "@openai/codex", "login", "--device-auth"],
-            capture_output=True, text=True,
+            [npx_path, "--yes", "@openai/codex", "login", "--device-auth"],
             timeout=timeout_seconds,
         )
         if result.returncode != 0:
             raise RuntimeError(
-                f"Codex CLI 로그인 실패 (exit={result.returncode}):\n"
-                f"{result.stderr.strip()}"
+                f"Codex CLI 로그인 실패 (exit={result.returncode})"
             )
     except FileNotFoundError:
         raise RuntimeError(
