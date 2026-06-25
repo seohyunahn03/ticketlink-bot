@@ -257,8 +257,8 @@ def _calc_adaptive_tolerances(
             y_gaps_raw.append(gap)
 
     if y_gaps_raw:
-        # max y-gap = 행 간격 (within-row gap < between-row gap)
-        estimated_row_gap = max(y_gaps_raw)
+        # median y-gap = 행 간격 (within-row gap < between-row gap)
+        estimated_row_gap = int(round(statistics.median(y_gaps_raw)))
         # Adaptive threshold: 60% of row gap, min 10px
         # 0.6 × row_gap < row_gap → 행 병합 방지
         # ≥10px → 행 내 y변동 허용
@@ -306,9 +306,9 @@ def _calc_adaptive_tolerances(
     adaptive_gap = fallback_gap
 
     if has_enough_x:
-        # median x-gap × 1.2
+        # median x-gap × 1.0 (엄격한 연석 판정)
         median_x = statistics.median(x_gaps)
-        adaptive_gap = max(1, int(round(median_x * 1.2)))
+        adaptive_gap = max(1, int(round(median_x * 1.0)))
         logger.info(
             "  📐 적응형 gap_tolerance: %d (median x-gap=%d, n=%d)",
             adaptive_gap, median_x, len(x_gaps),
