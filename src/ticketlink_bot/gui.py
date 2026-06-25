@@ -425,7 +425,7 @@ class TicketlinkGUI(tk.Tk):
         btn_row = ttk.Frame(frame)
         btn_row.grid(row=row + 1, column=0, columnspan=3, pady=8)
         ttk.Button(btn_row, text="➕ 구역 추가", command=self._add_zone_ui).pack(side="left", padx=4)
-        ttk.Button(btn_row, text="🎨 색상 자동추출", command=self._auto_pick_color).pack(side="left", padx=4)
+        ttk.Button(btn_row, text="🎨 좌석 클릭해서 색상추출", command=self._auto_pick_color).pack(side="left", padx=4)
 
         # 범용 설정
         row += 2
@@ -992,7 +992,8 @@ class TicketlinkGUI(tk.Tk):
         threading.Thread(target=self._do_auto_pick_color, daemon=True).start()
 
     def _do_auto_pick_color(self):
-        logger.info("🎨 빈 좌석(밝은색) 우클릭 → 색상 저장")
+        logger.info("🎨 빈 좌석 클릭 → 자동 색상 추출")
+        logger.info("   (좌석표에서 빈 좌석을 좌클릭 또는 우클릭하세요)")
         coord = self._run_picker_sync(use_global=True)
         if coord:
             try:

@@ -86,8 +86,8 @@ class GlobalPicker:
         self._state.captured.clear()
         self._state.cancelled = False
 
-        logger.info("🎯 글로벌 좌표 따기 — 아무 창에서나 우클릭하세요!")
-        logger.info("   🖱️ 우클릭 → 좌표 저장")
+        logger.info("🎯 글로벌 좌표 따기 — 아무 창에서나 **좌클릭 또는 우클릭**하세요!")
+        logger.info("   🖱️ 좌클릭/우클릭 → 즉시 저장")
         logger.info("   ⌨️ ESC → 취소")
         logger.info("   (모든 애플리케이션에서 동작)")
 
@@ -149,11 +149,11 @@ class GlobalPicker:
             pass
 
     def _on_click(self, _x, _y, button, pressed):
-        """마우스 클릭 콜백 (별도 스레드)"""
+        """마우스 클릭 콜백 (별도 스레드) — 좌클릭 또는 우클릭 모두 허용"""
         if not pressed:
             return  # press event만 처리
-        if button != mouse.Button.right:
-            return  # 우클릭만
+        if button not in (mouse.Button.left, mouse.Button.right):
+            return  # 좌클릭/우클릭만
 
         x, y = _x, _y
         with self._state._lock:
