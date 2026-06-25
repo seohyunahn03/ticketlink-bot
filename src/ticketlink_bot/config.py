@@ -25,6 +25,7 @@ DEFAULT_CONFIG = {
         "auto_captcha": True,
         "server_time": "",  # "10:00:00" 형식 — 새로고침 봇용
         "default_url": "https://www.ticketlink.co.kr/sports/137/59",
+        "captcha_provider": "openai",  # "openai" | "xai" — 캡차 Vision API 제공자
         # ── 하이브리드 새로고침 (CDP 기반 DOM 폴링) ──
         "hybrid_refresh": {
             "enabled": False,

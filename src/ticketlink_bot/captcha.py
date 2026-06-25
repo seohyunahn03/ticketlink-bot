@@ -381,6 +381,53 @@ def _solve_with_vision(image_bytes: bytes, model: str = "grok-4.20-0309-non-reas
 
 
 # ──────────────────────────────────────────────
+# OpenAI (Codex) Vision 캡차 인식
+# ──────────────────────────────────────────────
+
+def _solve_with_openai_vision(image_bytes: bytes, model: str = None) -> str:
+    """OpenAI Vision API (Codex)로 캡차 인식 — 기본 제공자"""
+    from .oauth import get_openai_token
+
+    token = get_openai_token()
+    if not token:
+        raise RuntimeError("OpenAI 토큰이 없습니다. GUI 설정에서 'Codex OAuth 로그인'을 먼저 실행하세요.")
+
+    image_bytes = _resize_image(image_bytes)
+    img_b64 = base64.b64encode(image_bytes).decode()
+
+    data = json.dumps({
+        "model": model or "gpt-5.4-codex",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Extract only the captcha characters visible in this image. Return ONLY the characters, nothing else. Example: \"ABC123\""},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                ],
+            }
+        ],
+        "max_tokens": 20,
+    }).encode()
+
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=data,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+    )
+    resp = urllib.request.urlopen(req, context=ctx, timeout=30)
+    result = json.loads(resp.read())
+    raw = result["choices"][0]["message"]["content"].strip()
+    text = raw.upper().strip()
+    corrected = "".join(_CHAR_REPLACEMENTS.get(c, c) for c in text if c.isalnum())
+    logger.info("🤖 OpenAI Vision: \"%s\"", corrected)
+    return corrected
+
+
+# ──────────────────────────────────────────────
 # 통합 solve_captcha (병렬 하이브리드)
 # ──────────────────────────────────────────────
 
@@ -388,6 +435,7 @@ def _solve_parallel(
     image_bytes: bytes,
     model: str = "grok-4.20-0309-non-reasoning",
     method: str = "oauth",
+    provider: str = "openai",
 ) -> str:
     """
     Tesseract + Vision **동시 실행**, 먼저 성공한 결과 반환.
@@ -412,12 +460,22 @@ def _solve_parallel(
         text = _solve_with_vision(image_bytes, model=vision_model, method=method)
         return ("vis", text, 100.0)
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    # OpenAI 전용 vision worker (provider="openai"일 때 추가)
+    def oai_vis_worker():
+        text = _solve_with_openai_vision(image_bytes, model=None)
+        return ("oai_vis", text, 100.0)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
         tess_fut = pool.submit(tess_worker)
         vis_fut = pool.submit(vis_worker)
+        oai_fut = pool.submit(oai_vis_worker) if provider == "openai" else None
+
+        futs = [tess_fut, vis_fut]
+        if oai_fut:
+            futs.append(oai_fut)
 
         # 먼저 완료되는 순서대로 처리
-        for future in as_completed([tess_fut, vis_fut]):
+        for future in as_completed(futs):
             source = "unknown"  # 예외 발생 시에도 source 참조 가능하도록
             try:
                 source, text, conf = future.result(timeout=10)
@@ -430,10 +488,14 @@ def _solve_parallel(
                 return text
 
             if source == "vis" and isinstance(text, str) and text:
-                logger.info("🌐 병렬 Vision 인식: \"%s\"", text)
+                logger.info("🌐 병렬 xAI Vision 인식: \"%s\"", text)
                 return text
 
-    raise ValueError("캡차 인식 실패 — Tesseract + xAI Vision 모두 실패했습니다.")
+            if source == "oai_vis" and isinstance(text, str) and text:
+                logger.info("🤖 병렬 OpenAI Vision 인식: \"%s\"", text)
+                return text
+
+    raise ValueError("캡차 인식 실패 — Tesseract + Vision 모두 실패했습니다.")
 
 
 def solve_captcha(
@@ -442,6 +504,7 @@ def solve_captcha(
     force_tesseract: bool = False,
     force_vision: bool = False,
     method: str = "oauth",
+    provider: str = "openai",
 ) -> str:
     """
     캡차 이미지 문자열 인식 — **병렬 하이브리드** 자동 폴백.
@@ -454,7 +517,10 @@ def solve_captcha(
     Worst case: 0.5초 (Vision 폴백)
     """
     if force_vision:
-        text = _solve_with_vision(image_bytes, model=model, method=method)
+        if provider == "openai":
+            text = _solve_with_openai_vision(image_bytes, model=None)
+        else:
+            text = _solve_with_vision(image_bytes, model=model, method=method)
         if text:
             return text
         raise ValueError("Vision 전용 모드에서 인식 실패")
@@ -466,15 +532,29 @@ def solve_captcha(
         raise ValueError("Tesseract 전용 모드에서 인식 실패")
 
     # 병렬 실행
-    return _solve_parallel(image_bytes, model=model, method=method)
+    return _solve_parallel(image_bytes, model=model, method=method, provider=provider)
 
 
 def _solve_with_vision_b64(
     b64_str: str,
     model: str = "grok-4.20-0309-non-reasoning",
     method: str = "oauth",
+    provider: str = "openai",
 ) -> str:
-    """xAI Vision — **base64 직접 입력** (디코드→재인코드 생략, 직통)"""
+    """Vision API — **base64 직접 입력** (provider="openai" → OpenAI 우선, 실패 시 xAI fallback)"""
+    import base64
+    image_bytes = base64.b64decode(b64_str)
+
+    if provider == "openai":
+        # OpenAI 우선 시도
+        try:
+            result = _solve_with_openai_vision(image_bytes, model=None)
+            if result:
+                return result
+        except Exception as e:
+            logger.warning("OpenAI Vision 실패, xAI fallback: %s", e)
+
+    # xAI
     token = _resolve_xai_token(method=method)
 
     data = json.dumps({
@@ -515,7 +595,7 @@ def _solve_with_vision_b64(
     corrected = "".join(
         _CHAR_REPLACEMENTS.get(c, c) for c in text if c.isalnum()
     )
-    logger.info("🌐 Vision(b64): \"%s\"", corrected)
+    logger.info("🌐 xAI Vision(b64): \"%s\"", corrected)
     return corrected
 
 
@@ -523,6 +603,7 @@ def solve_captcha_b64(
     b64_str: str,
     model: str = "grok-4.20-0309-non-reasoning",
     method: str = "oauth",
+    provider: str = "openai",
 ) -> str:
     """
     **직통** 캡차 인식 (base64 직접 입력).
@@ -541,4 +622,4 @@ def solve_captcha_b64(
         return text
 
     # Vision (b64 직행)
-    return _solve_with_vision_b64(b64_str, model=model, method=method)
+    return _solve_with_vision_b64(b64_str, model=model, method=method, provider=provider)

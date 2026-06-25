@@ -496,6 +496,7 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
 
     # ── 캡차 처리 ──
     auto_captcha = cfg.get("booking", {}).get("auto_captcha", True)
+    captcha_provider = cfg.get("booking", {}).get("captcha_provider", "openai")
     xai_cfg = cfg.get("xai", {})
     captcha_method = xai_cfg.get("api_type", "oauth")
     solved = False
@@ -515,7 +516,8 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         try:
             solved = _standalone_captcha(stop_event=stop_event, method=captcha_method,
                                          captcha_area=macro.get("captcha_area"),
-                                         captcha_typing_delay=delays.get("captcha_typing_delay", 15))
+                                         captcha_typing_delay=delays.get("captcha_typing_delay", 15),
+                                         provider=captcha_provider)
             if solved:
                 logger.info("  ✅ 캡차 입력 완료")
                 _wait(0.5)
@@ -676,6 +678,8 @@ def _do_preroll(macro: dict, delays: dict, stop_event=None,
     Returns:
         False면 중지 요청 (호출자는 즉시 반환해야 함)
     """
+    _PREROLL_POST_CLICK_DELAY = 0.2  # 200ms — 안내창확인/직접선택 클릭 후 대기
+
     # 구역선택
     sc = macro.get("section_click", [0, 0])
     if sc[0] != 0 or sc[1] != 0:
@@ -692,7 +696,7 @@ def _do_preroll(macro: dict, delays: dict, stop_event=None,
             return False
         _wait(0.5)
         _click(ds[0], ds[1], "직접선택")
-        _wait(click_wait)
+        _wait(_PREROLL_POST_CLICK_DELAY)
 
     # 안내창 확인 (선택)
     cg = macro.get("click_guide", [0, 0])
@@ -701,7 +705,7 @@ def _do_preroll(macro: dict, delays: dict, stop_event=None,
             return False
         _wait(0.5)
         _click(cg[0], cg[1], "안내창 확인")
-        _wait(click_wait)
+        _wait(_PREROLL_POST_CLICK_DELAY)
 
     return True
 
@@ -958,7 +962,8 @@ def standalone_book(cfg: dict, stop_event: Optional[threading.Event] = None) -> 
 def _standalone_captcha(stop_event: Optional[threading.Event] = None,
                         method: str = "oauth",
                         captcha_area: Optional[list] = None,
-                        captcha_typing_delay: int = 15) -> bool:
+                        captcha_typing_delay: int = 15,
+                        provider: str = "openai") -> bool:
     """
     시스템 스크린샷으로 캡차 해결.
     Chrome CDP 없이 pyautogui 전체화면 스크린샷 사용.
@@ -1003,7 +1008,7 @@ def _standalone_captcha(stop_event: Optional[threading.Event] = None,
 
     # 3. 캡차 인식
     logger.info("  🤖 캡차 인식 중...")
-    captcha_text = _solve_b64(b64, method=method)
+    captcha_text = _solve_b64(b64, method=method, provider=provider)
     logger.info("  ✅ 인식: \"%s\"", captcha_text)
 
     # OCR 결과 검증 (빈 문자열이나 짧은 값이면 실패 처리)
