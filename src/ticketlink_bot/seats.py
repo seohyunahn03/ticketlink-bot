@@ -192,6 +192,22 @@ def find_seats_in_zones(
             screenshot_bytes, color, tolerance=tol,
             area=area_tuple, max_results=max_results_per_zone,
         )
+
+        # 설정된 색상으로 2개 미만이면 → 자동 색상 감지 fallback
+        if len(zone_seats) < 2:
+            auto_color = _auto_detect_seat_color(
+                screenshot_bytes, area=area_tuple, tolerance=30,
+            )
+            if auto_color and auto_color.upper() != color.upper():
+                logger.info(
+                    "  🔄 자동 감지 색상 %s 로 재시도 (기존 %s → %d석 부족)",
+                    auto_color, color, len(zone_seats),
+                )
+                zone_seats = find_seats_by_color(
+                    screenshot_bytes, auto_color, tolerance=tol,
+                    area=area_tuple, max_results=max_results_per_zone,
+                )
+
         zone_results.append(zone_seats)
 
         # 중복 제거하며 통합 (existing은 loop 밖에서 한 번 생성)
@@ -392,3 +408,84 @@ def find_consecutive_seats(
 
     logger.info("  🔍 %d연석 못 찾음 (최대 %d개 그룹)", n, len(best_group))
     return []
+
+
+# ============================================================
+#  자동 좌석 색상 감지 — 설정된 색상으로 좌석을 못 찾았을 때 fallback
+# ============================================================
+
+_COMMON_SEAT_COLORS_BGR: list[str] = [
+    "9980E1",   # 핑크 (티켓링크 일반 좌석)
+    "C8C8C8",   # 회색 (전통적 빈좌석)
+    "87CEEB",   # 하늘색 (다른 구역)
+    "98FB98",   # 연두색
+    "FFD700",   # 금색
+    "FFA500",   # 주황색
+    "FFFFFF",   # 흰색
+]
+
+def _auto_detect_seat_color(
+    screenshot_bytes: bytes,
+    area: Optional[tuple[int, int, int, int]] = None,
+    tolerance: int = 30,
+) -> str:
+    """스크린샷에서 가장 많은 좌석 후보를 찾는 색상 자동 감지.
+
+    미리 정의된 일반적인 좌석 색상 목록을 시도하여
+    가장 많은 픽셀 클러스터를 생성하는 색상을 반환한다.
+
+    Args:
+        screenshot_bytes: 시스템 스크린샷 PNG 바이트
+        area: 탐색 영역 (x1, y1, x2, y2)
+        tolerance: 색상 오차범위
+
+    Returns:
+        BGR hex 문자열 (예: "9980E1") 또는 "" (실패 시)
+    """
+    img = Image.open(io.BytesIO(screenshot_bytes))
+    pixels = np.array(img.convert("RGB"))
+    h, w = pixels.shape[:2]
+    if area:
+        ax1, ay1, ax2, ay2 = area
+        ax1 = max(0, min(ax1, w))
+        ax2 = max(0, min(ax2, w))
+        ay1 = max(0, min(ay1, h))
+        ay2 = max(0, min(ay2, h))
+        if ax1 > ax2: ax1, ax2 = ax2, ax1
+        if ay1 > ay2: ay1, ay2 = ay2, ay1
+        crop = pixels[ay1:ay2, ax1:ax2]
+    else:
+        crop = pixels
+
+    best_color = ""
+    best_count = 0
+
+    for bgr_hex in _COMMON_SEAT_COLORS_BGR:
+        target_rgb = (
+            int(bgr_hex[4:6], 16),
+            int(bgr_hex[2:4], 16),
+            int(bgr_hex[0:2], 16),
+        )
+        lower = np.array([
+            max(0, target_rgb[0] - tolerance),
+            max(0, target_rgb[1] - tolerance),
+            max(0, target_rgb[2] - tolerance),
+        ], dtype=np.uint8)
+        upper = np.array([
+            min(255, target_rgb[0] + tolerance),
+            min(255, target_rgb[1] + tolerance),
+            min(255, target_rgb[2] + tolerance),
+        ], dtype=np.uint8)
+
+        mask = np.all((crop >= lower) & (crop <= upper), axis=-1)
+        count = int(np.sum(mask))
+        if count > best_count:
+            best_count = count
+            best_color = bgr_hex
+
+    if best_color:
+        logger.info(
+            "  🎨 자동 색상 감지: %s (%dpx 일치, %d개 색상 시도)",
+            best_color, best_count, len(_COMMON_SEAT_COLORS_BGR),
+        )
+    return best_color

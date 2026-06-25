@@ -624,8 +624,6 @@ def macro_bot(cfg: dict, stop_event: Optional[threading.Event] = None) -> dict:
         return result
 
     # ── 좌석 클릭 ──
-    logger.info("  🪑 좌석창 진입 — 1초 탐색 후 클릭 (탐지 회피)")
-    _wait(1.0)
     for i, (sx, sy) in enumerate(found_group):
         if stop_event and stop_event.is_set():
             result["message"] = "⏹️ 사용자 중지 (좌석 선택 중)"
